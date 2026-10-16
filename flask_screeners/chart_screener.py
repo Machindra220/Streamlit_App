@@ -104,7 +104,9 @@ def chart_ohlcv():
         if df is None or df.empty:
             return jsonify({"error": f"No data for {symbol}"}), 404
 
-        df = _normalise(df) or df
+        _norm = _normalise(df)
+        if _norm is not None:
+            df = _norm
         df.index = pd.to_datetime(df.index)
         if getattr(df.index, 'tz', None):
             df.index = df.index.tz_localize(None)
