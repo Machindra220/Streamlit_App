@@ -1,0 +1,480 @@
+{% extends "base_authenticated.html" %}
+{% block title %}TechFund Screener — US / S&P 500{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-950 text-slate-200 px-4 py-6">
+
+  <!-- ── Header ── -->
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+        🎯 <span>TechFund Screener</span>
+        <span class="text-sm font-normal bg-blue-900/50 text-blue-300 border border-blue-700/50 rounded px-2 py-0.5 ml-1">US / S&amp;P 500</span>
+      </h1>
+      <p class="text-slate-400 text-sm mt-1">Minervini Trend Template + RS Rating vs S&amp;P 500 + EPS/Revenue quarterly growth</p>
+    </div>
+    <div class="flex items-center gap-2 text-xs text-slate-500">
+      <span>Last run: <span class="text-slate-300">{{ last_run_time }}</span></span>
+      <span class="text-slate-700">|</span>
+      <span>Source: <span class="text-blue-400">{{ last_file }}</span></span>
+      <a href="{{ url_for('techfund_us.export_techfund_us') }}"
+         class="ml-2 bg-blue-800 hover:bg-blue-700 text-blue-200 px-3 py-1 rounded text-xs transition-colors">
+        ⬇ Export CSV
+      </a>
+    </div>
+  </div>
+
+  <!-- ── Alert ── -->
+  {% if summary_message %}
+  <div class="mb-4 px-4 py-3 rounded-lg text-sm font-medium
+    {% if '❌' in summary_message %}bg-red-900/30 border border-red-700/50 text-red-300
+    {% elif '✅' in summary_message %}bg-emerald-900/30 border border-emerald-700/50 text-emerald-300
+    {% else %}bg-blue-900/30 border border-blue-700/50 text-blue-300{% endif %}">
+    {{ summary_message }}
+  </div>
+  {% endif %}
+
+  <!-- ── Scan controls ── -->
+  <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-5 mb-6">
+    <form method="POST" enctype="multipart/form-data" id="scanForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Min EPS Growth % (YoY)</label>
+          <input type="number" name="min_eps_growth" step="1"
+                 value="{{ last_filters.get('min_eps_growth', 20) }}"
+                 class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Min Revenue Growth % (YoY)</label>
+          <input type="number" name="min_rev_growth" step="1"
+                 value="{{ last_filters.get('min_rev_growth', 10) }}"
+                 class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Max 52w High Distance %</label>
+          <input type="number" name="max_52w_high_dist" step="1"
+                 value="{{ last_filters.get('max_52w_high_dist', 25) }}"
+                 class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Max Tickers to Scan</label>
+          <input type="number" name="max_tickers" step="10" min="10" max="1000"
+                 value="{{ last_filters.get('max_tickers', 100) }}"
+                 class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-4 mb-4">
+        <label class="flex items-center gap-2 cursor-pointer text-sm">
+          <input type="checkbox" name="require_minervini" value="1"
+                 {% if last_filters.get('require_minervini', True) %}checked{% endif %}
+                 class="w-4 h-4 rounded accent-blue-500">
+          <span class="text-slate-300">Require Minervini Trend Template</span>
+        </label>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex-1 min-w-48">
+          <label class="block text-xs text-slate-400 mb-1">Upload custom CSV/Excel (symbol column required)</label>
+          <input type="file" name="file" accept=".csv,.xlsx,.xls"
+                 class="w-full text-sm text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600">
+        </div>
+        <div class="flex gap-2 pt-4">
+          {% if not is_default %}
+          <button type="submit" name="use_default" value="1"
+                  class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded text-sm transition-colors">
+            Use S&amp;P 500
+          </button>
+          {% endif %}
+          <button type="submit" id="startBtn"
+                  class="px-5 py-2 bg-blue-700 hover:bg-blue-600 text-white font-semibold rounded-lg text-sm transition-colors shadow-lg shadow-blue-900/50">
+            🔍 Start Scan
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Progress bar ── -->
+  <div id="progressSection" class="mb-5 {% if not scan_running %}hidden{% endif %}">
+    <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-medium text-slate-300" id="progressMsg">Scanning…</span>
+        <span class="text-xs text-slate-500" id="progressPhase"></span>
+        <span class="text-sm font-bold text-blue-400" id="progressPct">0%</span>
+      </div>
+      <div class="w-full bg-slate-800 rounded-full h-3 overflow-hidden">
+        <div id="progressBar" class="h-3 rounded-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-300" style="width:0%"></div>
+      </div>
+      <div class="flex gap-4 mt-2 text-xs text-slate-500">
+        <span>Cache hits: <span id="cacheHits" class="text-emerald-400 font-medium">0</span></span>
+        <span>YF fetches: <span id="yfFetches" class="text-blue-400 font-medium">0</span></span>
+        <span>Failed: <span id="failedCount" class="text-red-400 font-medium">0</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Stats ── -->
+  {% if stocks %}
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4 text-center">
+      <div class="text-2xl font-bold text-white">{{ scan_count }}</div>
+      <div class="text-xs text-slate-400 mt-1">Total Scanned</div>
+    </div>
+    <div class="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4 text-center">
+      <div class="text-2xl font-bold text-emerald-400">{{ pass_count }}</div>
+      <div class="text-xs text-slate-400 mt-1">PASS</div>
+    </div>
+    <div class="bg-blue-900/30 border border-blue-700/50 rounded-xl p-4 text-center">
+      <div class="text-2xl font-bold text-blue-400">{{ rs80_count }}</div>
+      <div class="text-xs text-slate-400 mt-1">RS ≥ 80</div>
+    </div>
+    <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl p-4 text-center">
+      <div class="text-2xl font-bold text-amber-400">{{ accel_count }}</div>
+      <div class="text-xs text-slate-400 mt-1">EPS Accelerating</div>
+    </div>
+  </div>
+
+  <!-- ── Sector cards ── -->
+  {% if top_sectors %}
+  <div class="flex flex-wrap gap-2 mb-5">
+    {% for sec in top_sectors %}
+    <button onclick="filterBySector('{{ sec.name }}')"
+            class="sector-pill flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:opacity-80"
+            style="background:{{ sec.theme.bg }};color:{{ sec.theme.text }};border-color:{{ sec.theme.border }}">
+      <span class="w-2 h-2 rounded-full" style="background:{{ sec.theme.badge }}"></span>
+      {{ sec.name }} <span class="opacity-70">({{ sec.count }})</span>
+    </button>
+    {% endfor %}
+    <button onclick="clearSectorFilter()"
+            class="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-600 text-slate-400 bg-slate-800/50 hover:bg-slate-700 transition-colors">
+      ✕ Clear
+    </button>
+  </div>
+  {% endif %}
+
+  <!-- ── Quick filter pills ── -->
+  <div class="flex flex-wrap gap-2 mb-4">
+    <span class="text-xs text-slate-500 self-center">Filter:</span>
+    <button onclick="applyFilter('all')"        class="filter-pill active px-3 py-1 rounded-full text-xs bg-slate-700 text-slate-200 border border-slate-600 hover:bg-slate-600 transition-colors" data-filter="all">All</button>
+    <button onclick="applyFilter('pass')"       class="filter-pill px-3 py-1 rounded-full text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors" data-filter="pass">✅ PASS Only</button>
+    <button onclick="applyFilter('minervini')"  class="filter-pill px-3 py-1 rounded-full text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors" data-filter="minervini">📈 Minervini PASS</button>
+    <button onclick="applyFilter('accel')"      class="filter-pill px-3 py-1 rounded-full text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors" data-filter="accel">🚀 EPS Accelerating</button>
+    <button onclick="applyFilter('rs80')"       class="filter-pill px-3 py-1 rounded-full text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors" data-filter="rs80">⭐ RS ≥ 80</button>
+    <button onclick="applyFilter('rs90')"       class="filter-pill px-3 py-1 rounded-full text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors" data-filter="rs90">🏆 RS ≥ 90</button>
+    <button onclick="applyFilter('champions')"  class="filter-pill px-3 py-1 rounded-full text-xs bg-amber-900/40 text-amber-400 border border-amber-700/50 hover:bg-amber-900/60 transition-colors" data-filter="champions">🥇 Champions</button>
+    <span class="text-xs text-slate-500 self-center ml-2" id="visibleCount">Showing {{ stocks|length }}</span>
+  </div>
+
+  <!-- ── Main table ── -->
+  <div class="overflow-x-auto rounded-xl border border-slate-700/50">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="bg-slate-900 border-b border-slate-700/50 text-xs text-slate-400 uppercase tracking-wide">
+          <th class="px-3 py-3 text-left w-8">#</th>
+          <th class="px-3 py-3 text-left cursor-pointer hover:text-white" onclick="sortTable('symbol')">Symbol ⇅</th>
+          <th class="px-3 py-3 text-left cursor-pointer hover:text-white" onclick="sortTable('sector')">Sector ⇅</th>
+          <th class="px-3 py-3 text-right cursor-pointer hover:text-white" onclick="sortTable('price')">Price ⇅</th>
+          <th class="px-3 py-3 text-center cursor-pointer hover:text-white" onclick="sortTable('rs_rating')">RS Rating ⇅</th>
+          <th class="px-3 py-3 text-right cursor-pointer hover:text-white" onclick="sortTable('dist_52w_high')">52w High Dist% ⇅</th>
+          <th class="px-3 py-3 text-center cursor-pointer hover:text-white" onclick="sortTable('minervini_score')">Minervini ⇅</th>
+          <th class="px-3 py-3 text-right cursor-pointer hover:text-white" onclick="sortTable('eps_yoy')">EPS Growth% ⇅</th>
+          <th class="px-3 py-3 text-right cursor-pointer hover:text-white" onclick="sortTable('rev_yoy')">Rev Growth% ⇅</th>
+          <th class="px-3 py-3 text-center">EPS Accel</th>
+          <th class="px-3 py-3 text-center cursor-pointer hover:text-white" onclick="sortTable('result')">Result ⇅</th>
+        </tr>
+      </thead>
+      <tbody id="stockTable">
+        {% for s in stocks %}
+        <tr class="stock-row border-b border-slate-800 hover:bg-slate-800/50 transition-colors"
+            data-result="{{ s.result }}"
+            data-rs="{{ s.rs_rating }}"
+            data-minervini="{{ 'true' if s.minervini else 'false' }}"
+            data-accel="{{ 'true' if s.eps_accel else 'false' }}"
+            data-sector="{{ s.sector }}"
+            data-dist52="{{ s.dist_52w_high }}"
+            data-eps="{{ s.eps_yoy if s.eps_yoy is not none else '' }}"
+            data-rev="{{ s.rev_yoy if s.rev_yoy is not none else '' }}"
+            data-symbol="{{ s.symbol }}"
+            data-price="{{ s.price }}"
+            data-minscore="{{ s.minervini_score }}">
+
+          <td class="px-3 py-3 text-slate-500 text-xs">{{ loop.index }}</td>
+
+          <td class="px-3 py-3">
+            <div class="flex flex-col">
+              <span class="font-semibold text-white">{{ s.symbol }}</span>
+              <span class="text-xs text-slate-500">${{ "%.2f"|format(s.sma200) }} 200d</span>
+            </div>
+          </td>
+
+          <td class="px-3 py-3">
+            <span class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{{ s.sector }}</span>
+          </td>
+
+          <td class="px-3 py-3 text-right font-mono">
+            <span class="text-white">${{ "%.2f"|format(s.price) }}</span>
+            <div class="text-xs text-slate-500">52wH ${{ "%.0f"|format(s.high_52w) }}</div>
+          </td>
+
+          <td class="px-3 py-3 text-center">
+            <span class="inline-block px-2 py-0.5 rounded font-bold text-sm
+              {% if s.rs_rating >= 90 %}bg-purple-900/50 text-purple-300
+              {% elif s.rs_rating >= 80 %}bg-blue-900/50 text-blue-300
+              {% elif s.rs_rating >= 70 %}bg-teal-900/50 text-teal-300
+              {% elif s.rs_rating >= 50 %}bg-slate-700 text-slate-300
+              {% else %}bg-slate-800 text-slate-500{% endif %}">
+              {{ s.rs_rating }}
+            </span>
+          </td>
+
+          <td class="px-3 py-3 text-right font-mono text-sm
+            {% if s.dist_52w_high <= 10 %}text-emerald-400
+            {% elif s.dist_52w_high <= 20 %}text-amber-400
+            {% else %}text-slate-400{% endif %}">
+            {{ "%.1f"|format(s.dist_52w_high) }}%
+          </td>
+
+          <td class="px-3 py-3 text-center">
+            <div class="flex flex-col items-center gap-1">
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium
+                {% if s.minervini %}bg-emerald-900/50 text-emerald-300{% else %}bg-red-900/30 text-red-400{% endif %}">
+                {% if s.minervini %}✓ PASS{% else %}✗ {{ s.minervini_score }}/6{% endif %}
+              </span>
+              {% if not s.minervini %}
+              <span class="text-xs text-slate-600" title="M1:{{ s.m1 }} M2:{{ s.m2 }} M3:{{ s.m3 }} M4:{{ s.m4 }} M5:{{ s.m5 }} M6:{{ s.m6 }}">
+                {{ s.minervini_score }}/6
+              </span>
+              {% endif %}
+            </div>
+          </td>
+
+          <td class="px-3 py-3 text-right font-mono text-sm">
+            {% if s.eps_yoy is not none %}
+              <span class="{% if s.eps_yoy >= 25 %}text-emerald-400{% elif s.eps_yoy >= 0 %}text-slate-300{% else %}text-red-400{% endif %}">
+                {{ "%+.1f"|format(s.eps_yoy) }}%
+              </span>
+            {% else %}
+              <span class="text-slate-600">—</span>
+            {% endif %}
+          </td>
+
+          <td class="px-3 py-3 text-right font-mono text-sm">
+            {% if s.rev_yoy is not none %}
+              <span class="{% if s.rev_yoy >= 15 %}text-emerald-400{% elif s.rev_yoy >= 0 %}text-slate-300{% else %}text-red-400{% endif %}">
+                {{ "%+.1f"|format(s.rev_yoy) }}%
+              </span>
+            {% else %}
+              <span class="text-slate-600">—</span>
+            {% endif %}
+          </td>
+
+          <td class="px-3 py-3 text-center">
+            {% if s.eps_accel %}
+              <span class="text-amber-400 font-bold" title="EPS acceleration — latest QoQ YoY > prior QoQ YoY">🚀</span>
+            {% else %}
+              <span class="text-slate-700">—</span>
+            {% endif %}
+          </td>
+
+          <td class="px-3 py-3 text-center">
+            <span class="inline-block px-2 py-0.5 rounded text-xs font-bold
+              {% if s.result == 'PASS' %}bg-emerald-700/60 text-emerald-200
+              {% elif s.result == 'FAIL' %}bg-red-900/40 text-red-400
+              {% else %}bg-slate-800 text-slate-500{% endif %}">
+              {{ s.result }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── History ── -->
+  {% if history %}
+  <div class="mt-6 bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-300 mb-3">📂 Recent Scans</h3>
+    <div class="flex flex-wrap gap-2">
+      {% for h in history %}
+      <button onclick="restoreHistory('{{ h._file }}')"
+              class="text-xs px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 transition-colors">
+        {{ h.timestamp }} · {{ h.count }} stocks · {{ h.pass_count }} PASS
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Strategy guide ── -->
+  <div class="mt-6 bg-slate-900/50 border border-slate-800 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-white mb-3">📖 How It Works</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-400">
+      <div>
+        <div class="text-blue-400 font-medium mb-2">Minervini Trend Template</div>
+        <ul class="space-y-1">
+          <li>M1: Price &gt; SMA150 &amp; SMA200</li>
+          <li>M2: SMA150 &gt; SMA200</li>
+          <li>M3: SMA200 trending up (vs 20 days ago)</li>
+          <li>M4: SMA50 &gt; SMA150 &amp; SMA200</li>
+          <li>M5: Price &gt; SMA50</li>
+          <li>M6: Price ≥ 52w Low × 1.25</li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-indigo-400 font-medium mb-2">RS Rating (1–99) vs S&amp;P 500</div>
+        <ul class="space-y-1">
+          <li>1-year excess return vs ^GSPC</li>
+          <li>Percentile-ranked within the batch</li>
+          <li>RS ≥ 80 → strong relative strength</li>
+          <li>RS ≥ 90 → top 10% in universe</li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-amber-400 font-medium mb-2">Fundamentals</div>
+        <ul class="space-y-1">
+          <li>EPS Growth: current Q vs same Q last year</li>
+          <li>Rev Growth: Total Revenue YoY</li>
+          <li>Accel 🚀: latest YoY &gt; prior YoY</li>
+          <li>Missing data = not auto-failed</li>
+          <li>Champions: PASS + Minervini + Accel + RS≥80</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="text-center py-20 text-slate-600">
+    <div class="text-5xl mb-4">🎯</div>
+    <p class="text-lg">No scan results yet. Set filters and click <strong class="text-slate-400">Start Scan</strong>.</p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+// ── Progress polling ──
+let _pollInterval = null;
+{% if scan_running %}
+startPolling();
+{% endif %}
+
+function startPolling() {
+  if (_pollInterval) return;
+  document.getElementById('progressSection').classList.remove('hidden');
+  _pollInterval = setInterval(pollProgress, 1200);
+}
+
+function pollProgress() {
+  fetch("{{ url_for('techfund_us.techfund_us_progress') }}")
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('progressBar').style.width = d.pct + '%';
+      document.getElementById('progressPct').textContent = d.pct + '%';
+      document.getElementById('progressMsg').textContent = d.msg || '';
+      document.getElementById('progressPhase').textContent = d.phase ? '[' + d.phase + ']' : '';
+      document.getElementById('cacheHits').textContent   = d.cache_hits || 0;
+      document.getElementById('yfFetches').textContent   = d.yf_fetches || 0;
+      document.getElementById('failedCount').textContent = d.failed || 0;
+      if (!d.running) {
+        clearInterval(_pollInterval); _pollInterval = null;
+        if (d.pct >= 100) setTimeout(() => location.reload(), 1000);
+      }
+    }).catch(() => {});
+}
+
+// ── Filter ──
+let _activeFilter = 'all';
+let _activeSector = null;
+
+function applyFilter(filter) {
+  _activeFilter = filter;
+  document.querySelectorAll('.filter-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.filter === filter);
+    p.classList.toggle('bg-blue-800', p.dataset.filter === filter);
+    p.classList.toggle('text-blue-200', p.dataset.filter === filter);
+    p.classList.toggle('bg-slate-800', p.dataset.filter !== filter);
+    p.classList.toggle('text-slate-400', p.dataset.filter !== filter);
+  });
+  applyVisibility();
+}
+
+function filterBySector(sec) {
+  _activeSector = sec;
+  applyVisibility();
+}
+
+function clearSectorFilter() {
+  _activeSector = null;
+  applyVisibility();
+}
+
+function applyVisibility() {
+  const rows = document.querySelectorAll('.stock-row');
+  let visible = 0;
+  rows.forEach(row => {
+    const rs      = parseInt(row.dataset.rs)  || 0;
+    const result  = row.dataset.result;
+    const min     = row.dataset.minervini === 'true';
+    const accel   = row.dataset.accel     === 'true';
+    const sector  = row.dataset.sector;
+
+    let show = true;
+    if (_activeSector && sector !== _activeSector) show = false;
+    if (show) {
+      if      (_activeFilter === 'pass')       show = result === 'PASS';
+      else if (_activeFilter === 'minervini')  show = min;
+      else if (_activeFilter === 'accel')      show = accel;
+      else if (_activeFilter === 'rs80')       show = rs >= 80;
+      else if (_activeFilter === 'rs90')       show = rs >= 90;
+      else if (_activeFilter === 'champions')  show = result === 'PASS' && min && accel && rs >= 80;
+    }
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const el = document.getElementById('visibleCount');
+  if (el) el.textContent = 'Showing ' + visible;
+}
+
+// ── Sort ──
+let _sortDir = {};
+function sortTable(key) {
+  _sortDir[key] = !_sortDir[key];
+  const asc = _sortDir[key];
+  const tbody = document.getElementById('stockTable');
+  const rows  = Array.from(tbody.querySelectorAll('.stock-row'));
+  rows.sort((a, b) => {
+    const valMap = {
+      'symbol':        [a.dataset.symbol,   b.dataset.symbol],
+      'sector':        [a.dataset.sector,   b.dataset.sector],
+      'price':         [parseFloat(a.dataset.price  || 0), parseFloat(b.dataset.price  || 0)],
+      'rs_rating':     [parseInt(a.dataset.rs    || 0), parseInt(b.dataset.rs    || 0)],
+      'dist_52w_high': [parseFloat(a.dataset.dist52 || 0), parseFloat(b.dataset.dist52 || 0)],
+      'minervini_score':[parseInt(a.dataset.minscore||0),  parseInt(b.dataset.minscore||0)],
+      'eps_yoy':       [parseFloat(a.dataset.eps   || -999), parseFloat(b.dataset.eps   || -999)],
+      'rev_yoy':       [parseFloat(a.dataset.rev   || -999), parseFloat(b.dataset.rev   || -999)],
+      'result':        [a.dataset.result,   b.dataset.result],
+    };
+    const [va, vb] = valMap[key] || ['', ''];
+    if (typeof va === 'number') return asc ? va - vb : vb - va;
+    return asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+  rows.forEach((r, i) => {
+    r.querySelector('td:first-child').textContent = i + 1;
+    tbody.appendChild(r);
+  });
+  applyVisibility();
+}
+
+// ── Restore history ──
+function restoreHistory(filename) {
+  fetch("{{ url_for('techfund_us.techfund_us_restore', filename='__fn__') }}".replace('__fn__', filename))
+    .then(() => location.reload());
+}
+</script>
+{% endblock %}
