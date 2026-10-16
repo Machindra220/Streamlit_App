@@ -1,0 +1,607 @@
+{% extends "base_authenticated.html" %}
+{% block title %}Chart — {{ default_symbol }}{% endblock %}
+
+{% block content %}
+<style>
+  /* Override base template to allow full-height chart layout */
+  #chartApp { height: calc(100vh - 64px); display: flex; flex-direction: column; background: #131722; overflow: hidden; margin: -1.5rem -1rem -1rem; }
+  .tf-btn.active { background: #2A2E39; color: #fff; }
+  .ema-btn.active { opacity: 1; }
+  .ema-btn { opacity: 0.4; transition: opacity .15s; }
+  .wl-row.active { background: #2A2E39; }
+  .wl-row:hover { background: #1e2130; }
+  #loadingOverlay { position: absolute; inset: 0; background: rgba(19,23,34,.8); display: flex; align-items: center; justify-content: center; z-index: 20; }
+</style>
+
+<div id="chartApp">
+
+  <!-- ── Toolbar ── -->
+  <div class="flex items-center gap-1.5 px-2 py-1.5 flex-shrink-0" style="background:#1E222D;border-bottom:1px solid #2A2E39">
+
+    <!-- Symbol input -->
+    <div class="flex items-center gap-1 bg-[#2A2E39] rounded px-2 py-1">
+      <span id="marketFlag" class="text-sm">🇮🇳</span>
+      <input id="symbolInput" type="text" value="{{ default_symbol }}"
+             autocomplete="off" spellcheck="false"
+             class="bg-transparent text-white text-sm w-28 uppercase outline-none font-bold tracking-wide">
+      <button onclick="loadSymbolFromInput()" class="text-slate-400 hover:text-white text-xs px-1">⏎</button>
+    </div>
+
+    <!-- Price display -->
+    <div class="flex items-center gap-1.5 text-xs border-l border-[#2A2E39] pl-2">
+      <span id="priceDisplay" class="text-white font-bold text-sm">—</span>
+      <span id="chgDisplay" class="text-slate-400">—</span>
+    </div>
+
+    <div class="border-l border-[#2A2E39] mx-1 h-5"></div>
+
+    <!-- Timeframes -->
+    <div class="flex gap-0.5">
+      {% for tf in ['1m','5m','15m','30m','1h','4h','D','W','M'] %}
+      <button class="tf-btn px-2 py-1 text-xs rounded text-slate-400 hover:bg-[#2A2E39] transition-colors" data-tf="{{ tf }}">{{ tf }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="border-l border-[#2A2E39] mx-1 h-5"></div>
+
+    <!-- Chart type -->
+    <button id="chartTypeBtn" onclick="toggleChartType()"
+            class="px-2 py-1 text-xs rounded text-slate-400 hover:bg-[#2A2E39] transition-colors" title="Toggle chart type">
+      🕯 Candle
+    </button>
+
+    <div class="border-l border-[#2A2E39] mx-1 h-5"></div>
+
+    <!-- EMA toggles -->
+    <span class="text-xs text-slate-500">EMA:</span>
+    <button class="ema-btn active px-2 py-0.5 rounded text-xs font-bold" data-ema="10"  style="color:#EE9322;border:1px solid #EE9322">10</button>
+    <button class="ema-btn active px-2 py-0.5 rounded text-xs font-bold" data-ema="20"  style="color:#F1C40F;border:1px solid #F1C40F">20</button>
+    <button class="ema-btn active px-2 py-0.5 rounded text-xs font-bold" data-ema="50"  style="color:#3498DB;border:1px solid #3498DB">50</button>
+    <button class="ema-btn       px-2 py-0.5 rounded text-xs font-bold" data-ema="100" style="color:#9B59B6;border:1px solid #9B59B6">100</button>
+    <button class="ema-btn active px-2 py-0.5 rounded text-xs font-bold" data-ema="200" style="color:#E74C3C;border:1px solid #E74C3C">200</button>
+
+    <div class="border-l border-[#2A2E39] mx-1 h-5"></div>
+
+    <!-- RS toggle -->
+    <button id="rsToggleBtn" onclick="toggleRSPane()"
+            class="px-2 py-1 text-xs rounded bg-[#2A2E39] text-emerald-400 hover:bg-[#363c4e] transition-colors">RS</button>
+
+    <div class="flex-1"></div>
+
+    <!-- Watchlist toggle -->
+    <button onclick="toggleWatchlist()"
+            class="px-2 py-1 text-xs rounded text-slate-400 hover:bg-[#2A2E39] transition-colors" title="Toggle watchlist">☰ Watchlist</button>
+
+    <!-- Fullscreen chart -->
+    <button onclick="toggleFullscreen()"
+            class="px-2 py-1 text-xs rounded text-slate-400 hover:bg-[#2A2E39] transition-colors" id="fsBtn" title="Fullscreen">⛶</button>
+  </div>
+
+  <!-- ── OHLCV info bar ── -->
+  <div id="ohlcBar" class="flex items-center gap-4 px-3 py-0.5 text-xs flex-shrink-0 font-mono" style="background:#1E222D;border-bottom:1px solid #2A2E39;min-height:22px">
+    <span id="ohlcSymbol" class="text-slate-300 font-bold"></span>
+    <span>O: <span id="ohlcO" class="text-white">—</span></span>
+    <span>H: <span id="ohlcH" class="text-emerald-400">—</span></span>
+    <span>L: <span id="ohlcL" class="text-red-400">—</span></span>
+    <span>C: <span id="ohlcC" class="text-white">—</span></span>
+    <span class="border-l border-[#2A2E39] pl-4">Vol: <span id="ohlcV" class="text-slate-300">—</span></span>
+    <span id="rsBarWrap" class="border-l border-[#2A2E39] pl-4">RS vs Bench: <span id="rsBarVal" class="text-emerald-400 font-bold">—</span></span>
+  </div>
+
+  <!-- ── Main body: charts + watchlist ── -->
+  <div class="flex flex-1 min-h-0 relative" id="mainBody">
+
+    <!-- Charts column -->
+    <div id="chartsCol" class="flex-1 flex flex-col min-h-0 relative">
+      <div id="loadingOverlay" class="hidden">
+        <div class="flex flex-col items-center gap-2">
+          <div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <span class="text-slate-400 text-sm" id="loadingMsg">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Main candlestick chart -->
+      <div id="mainChart" class="flex-1 min-h-0"></div>
+
+      <!-- RS pane separator -->
+      <div id="rsPaneSep" class="flex-shrink-0 flex items-center px-3 py-0.5 text-xs text-slate-500 select-none cursor-row-resize" style="background:#1a1e2d;border-top:1px solid #2A2E39">
+        RS Line (Stock vs Benchmark) — above 1.0 = outperforming
+      </div>
+
+      <!-- RS chart pane -->
+      <div id="rsChart" class="flex-shrink-0" style="height:140px"></div>
+    </div>
+
+    <!-- Watchlist sidebar -->
+    <div id="watchlistPanel" class="flex flex-col flex-shrink-0" style="width:280px;background:#161b2b;border-left:1px solid #2A2E39">
+
+      <!-- Add symbol input -->
+      <div class="p-2 flex gap-1 flex-shrink-0" style="border-bottom:1px solid #2A2E39">
+        <input id="wlAddInput" type="text" placeholder="Add symbol…  (e.g. INFY.NS)"
+               autocomplete="off" spellcheck="false"
+               class="flex-1 bg-[#2A2E39] text-white text-xs px-2 py-1.5 rounded outline-none placeholder-slate-500 uppercase">
+        <button onclick="wlAdd()"
+                class="bg-blue-700 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded transition-colors">+</button>
+      </div>
+
+      <!-- Watchlist header -->
+      <div class="flex px-3 py-1.5 text-xs text-slate-500 flex-shrink-0" style="border-bottom:1px solid #2A2E39">
+        <span class="flex-1">Symbol</span>
+        <span class="w-20 text-right">Last</span>
+        <span class="w-16 text-right">Chg%</span>
+        <span class="w-5"></span>
+      </div>
+
+      <!-- Symbol list -->
+      <div id="wlList" class="flex-1 overflow-y-auto"></div>
+
+      <!-- Refresh btn -->
+      <div class="p-2 flex-shrink-0 flex justify-between items-center" style="border-top:1px solid #2A2E39">
+        <span class="text-xs text-slate-600" id="wlLastUpdate">—</span>
+        <button onclick="loadPrices()"
+                class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-[#2A2E39] transition-colors">⟳ Refresh</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let mainChart, mainSeries, volSeries;
+let rsChart, rsSeries, rsBaseline;
+let emaSeries = {};
+let currentSymbol = '{{ default_symbol }}';
+let currentInterval = 'D';
+let chartType = 'candle';
+let syncLock = false;
+let watchlistPrices = {};
+let emaVisible = { 10: true, 20: true, 50: true, 100: false, 200: true };
+let rsPaneVisible = true;
+let watchlistVisible = true;
+
+const EMA_DEFS = [
+  { p: 10,  color: '#EE9322', w: 1   },
+  { p: 20,  color: '#F1C40F', w: 1   },
+  { p: 50,  color: '#3498DB', w: 1.5 },
+  { p: 100, color: '#9B59B6', w: 1   },
+  { p: 200, color: '#E74C3C', w: 2   },
+];
+
+const CHART_BG   = '#131722';
+const GRID_COLOR = '#1E222D';
+const BORDER_CLR = '#2A2E39';
+
+// ── Init ───────────────────────────────────────────────────────────────────
+function initCharts() {
+  const mainEl = document.getElementById('mainChart');
+  const rsEl   = document.getElementById('rsChart');
+
+  const common = {
+    layout: { background: { color: CHART_BG }, textColor: '#D1D4DC' },
+    grid: { vertLines: { color: GRID_COLOR }, horzLines: { color: GRID_COLOR } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: '#758696', labelBackgroundColor: '#2A2E39' },
+      horzLine: { color: '#758696', labelBackgroundColor: '#2A2E39' } },
+    rightPriceScale: { borderColor: BORDER_CLR },
+    timeScale: { borderColor: BORDER_CLR, timeVisible: true, secondsVisible: false },
+    handleScroll: true, handleScale: true,
+  };
+
+  mainChart = LightweightCharts.createChart(mainEl, {
+    ...common,
+    width: mainEl.clientWidth,
+    height: mainEl.clientHeight,
+  });
+
+  rsChart = LightweightCharts.createChart(rsEl, {
+    ...common,
+    width: rsEl.clientWidth,
+    height: rsEl.clientHeight,
+    timeScale: { ...common.timeScale, visible: false },
+    rightPriceScale: { ...common.rightPriceScale, scaleMargins: { top: 0.1, bottom: 0.05 } },
+  });
+
+  // Sync time ranges
+  mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (syncLock || !range) return;
+    syncLock = true;
+    rsChart.timeScale().setVisibleLogicalRange(range);
+    syncLock = false;
+  });
+  rsChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+    if (syncLock || !range) return;
+    syncLock = true;
+    mainChart.timeScale().setVisibleLogicalRange(range);
+    syncLock = false;
+  });
+
+  // Crosshair → OHLC info bar
+  mainChart.subscribeCrosshairMove(param => {
+    if (!param.time || !mainSeries) return;
+    const d = param.seriesData.get(mainSeries);
+    if (!d) return;
+    const fmt = v => v != null ? v.toLocaleString(undefined, {maximumFractionDigits: 2}) : '—';
+    document.getElementById('ohlcO').textContent = fmt(d.open   ?? d.value);
+    document.getElementById('ohlcH').textContent = fmt(d.high   ?? d.value);
+    document.getElementById('ohlcL').textContent = fmt(d.low    ?? d.value);
+    document.getElementById('ohlcC').textContent = fmt(d.close  ?? d.value);
+    if (volSeries) {
+      const vd = param.seriesData.get(volSeries);
+      if (vd) document.getElementById('ohlcV').textContent = fmtVol(vd.value);
+    }
+  });
+
+  // RS crosshair value
+  rsChart.subscribeCrosshairMove(param => {
+    if (!param.time || !rsSeries) return;
+    const d = param.seriesData.get(rsSeries);
+    if (d) document.getElementById('rsBarVal').textContent = d.value.toFixed(3);
+  });
+
+  // Resize observer
+  const ro = new ResizeObserver(() => resizeCharts());
+  ro.observe(document.getElementById('chartsCol'));
+}
+
+function resizeCharts() {
+  const col    = document.getElementById('chartsCol');
+  const rsEl   = document.getElementById('rsChart');
+  const mainEl = document.getElementById('mainChart');
+  if (!mainChart || !rsChart) return;
+  mainChart.applyOptions({ width: col.clientWidth, height: mainEl.clientHeight });
+  rsChart.applyOptions({ width: col.clientWidth, height: rsEl.clientHeight });
+}
+
+// ── EMA ────────────────────────────────────────────────────────────────────
+function calcEMA(data, period) {
+  if (data.length < period) return [];
+  const k = 2 / (period + 1);
+  const result = [];
+  // seed with SMA of first `period` closes
+  let ema = 0;
+  for (let i = 0; i < period; i++) ema += data[i].close;
+  ema /= period;
+  result.push({ time: data[period - 1].time, value: parseFloat(ema.toFixed(4)) });
+  for (let i = period; i < data.length; i++) {
+    ema = data[i].close * k + ema * (1 - k);
+    result.push({ time: data[i].time, value: parseFloat(ema.toFixed(4)) });
+  }
+  return result;
+}
+
+// ── Load chart data ────────────────────────────────────────────────────────
+async function loadChart(symbol, interval) {
+  symbol   = symbol.toUpperCase().trim();
+  interval = interval || currentInterval;
+  currentSymbol   = symbol;
+  currentInterval = interval;
+
+  // Update UI
+  document.getElementById('symbolInput').value = symbol;
+  document.getElementById('marketFlag').textContent = symbol.endsWith('.NS') ? '🇮🇳' : '🇺🇸';
+  document.getElementById('ohlcSymbol').textContent = symbol;
+  document.title = `${symbol} · Chart`;
+  setLoading(true, `Loading ${symbol}…`);
+
+  // Highlight active tf button
+  document.querySelectorAll('.tf-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tf === interval);
+  });
+
+  // Highlight watchlist row
+  document.querySelectorAll('.wl-row').forEach(r => {
+    r.classList.toggle('active', r.dataset.sym === symbol);
+  });
+
+  try {
+    const res  = await fetch(`/api/chart/ohlcv?symbol=${encodeURIComponent(symbol)}&interval=${interval}`);
+    const data = await res.json();
+    if (data.error) { setLoading(false); showBanner(data.error, 'red'); return; }
+
+    // Clear old series
+    clearSeries();
+
+    const ohlcv = data.ohlcv;
+
+    // Main series
+    if (chartType === 'candle') {
+      mainSeries = mainChart.addCandlestickSeries({
+        upColor: '#26a69a', downColor: '#ef5350',
+        borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+        wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+      });
+    } else {
+      mainSeries = mainChart.addLineSeries({ color: '#2196F3', lineWidth: 2, priceLineVisible: true });
+    }
+    mainSeries.setData(ohlcv);
+
+    // Volume (overlay at bottom of main chart with separate scale)
+    volSeries = mainChart.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'vol',
+    });
+    mainChart.priceScale('vol').applyOptions({
+      scaleMargins: { top: 0.82, bottom: 0 },
+      drawTicks: false,
+      borderVisible: false,
+    });
+    volSeries.setData(ohlcv.map(d => ({
+      time: d.time,
+      value: d.volume,
+      color: d.close >= d.open ? 'rgba(38,166,154,.45)' : 'rgba(239,83,80,.45)',
+    })));
+
+    // EMA lines
+    for (const def of EMA_DEFS) {
+      const s = mainChart.addLineSeries({
+        color: def.color, lineWidth: def.w,
+        visible: emaVisible[def.p] !== false,
+        priceLineVisible: false, lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      s.setData(calcEMA(ohlcv, def.p));
+      emaSeries[def.p] = s;
+    }
+
+    // RS pane
+    if (rsPaneVisible && data.rs && data.rs.length > 1) {
+      rsSeries = rsChart.addLineSeries({
+        color: '#4CAF50', lineWidth: 1.5,
+        priceLineVisible: false, lastValueVisible: true,
+        crosshairMarkerVisible: true,
+      });
+      rsSeries.setData(data.rs);
+
+      rsBaseline = rsChart.addLineSeries({
+        color: 'rgba(255,255,255,.25)', lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      rsBaseline.setData([
+        { time: data.rs[0].time, value: 1 },
+        { time: data.rs[data.rs.length - 1].time, value: 1 },
+      ]);
+
+      // Color RS line based on outperform/underperform
+      const last = data.rs[data.rs.length - 1].value;
+      rsSeries.applyOptions({ color: last >= 1 ? '#4CAF50' : '#ef5350' });
+      document.getElementById('rsBarVal').textContent = last.toFixed(3);
+    }
+
+    mainChart.timeScale().fitContent();
+
+    // Price in toolbar
+    const pEl  = document.getElementById('priceDisplay');
+    const cEl  = document.getElementById('chgDisplay');
+    const curr = data.last;
+    const sym  = symbol.endsWith('.NS') ? '₹' : '$';
+    pEl.textContent = `${sym}${curr.toLocaleString()}`;
+    pEl.style.color = data.chg >= 0 ? '#26a69a' : '#ef5350';
+    cEl.textContent = `${data.chg >= 0 ? '+' : ''}${data.chg} (${data.chg_pct >= 0 ? '+' : ''}${data.chg_pct}%)`;
+    cEl.style.color = data.chg >= 0 ? '#26a69a' : '#ef5350';
+
+    // OHLC bar — set last candle values
+    const last_d = ohlcv[ohlcv.length - 1];
+    document.getElementById('ohlcO').textContent = fmt2(last_d.open);
+    document.getElementById('ohlcH').textContent = fmt2(last_d.high);
+    document.getElementById('ohlcL').textContent = fmt2(last_d.low);
+    document.getElementById('ohlcC').textContent = fmt2(last_d.close);
+    document.getElementById('ohlcV').textContent = fmtVol(last_d.volume);
+
+    setLoading(false);
+
+  } catch(e) {
+    setLoading(false);
+    showBanner(e.message, 'red');
+  }
+}
+
+function clearSeries() {
+  if (mainSeries) { try { mainChart.removeSeries(mainSeries); } catch{} mainSeries = null; }
+  if (volSeries)  { try { mainChart.removeSeries(volSeries);  } catch{} volSeries  = null; }
+  Object.values(emaSeries).forEach(s => { try { mainChart.removeSeries(s); } catch{} });
+  emaSeries = {};
+  if (rsSeries)   { try { rsChart.removeSeries(rsSeries);   } catch{} rsSeries   = null; }
+  if (rsBaseline) { try { rsChart.removeSeries(rsBaseline); } catch{} rsBaseline = null; }
+}
+
+// ── EMA toggle ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.ema-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = parseInt(btn.dataset.ema);
+    emaVisible[p] = !emaVisible[p];
+    btn.classList.toggle('active', emaVisible[p]);
+    if (emaSeries[p]) emaSeries[p].applyOptions({ visible: emaVisible[p] });
+  });
+});
+
+// ── Chart type toggle ──────────────────────────────────────────────────────
+function toggleChartType() {
+  chartType = chartType === 'candle' ? 'line' : 'candle';
+  document.getElementById('chartTypeBtn').textContent = chartType === 'candle' ? '🕯 Candle' : '📈 Line';
+  loadChart(currentSymbol, currentInterval);
+}
+
+// ── RS pane toggle ─────────────────────────────────────────────────────────
+function toggleRSPane() {
+  rsPaneVisible = !rsPaneVisible;
+  const sep  = document.getElementById('rsPaneSep');
+  const rsEl = document.getElementById('rsChart');
+  const btn  = document.getElementById('rsToggleBtn');
+  sep.style.display  = rsPaneVisible ? '' : 'none';
+  rsEl.style.display = rsPaneVisible ? '' : 'none';
+  btn.style.opacity  = rsPaneVisible ? '1' : '0.4';
+  if (rsPaneVisible) loadChart(currentSymbol, currentInterval);
+  setTimeout(resizeCharts, 50);
+}
+
+// ── Watchlist toggle ───────────────────────────────────────────────────────
+function toggleWatchlist() {
+  watchlistVisible = !watchlistVisible;
+  document.getElementById('watchlistPanel').style.display = watchlistVisible ? '' : 'none';
+  setTimeout(resizeCharts, 50);
+}
+
+// ── Fullscreen ─────────────────────────────────────────────────────────────
+function toggleFullscreen() {
+  const el = document.getElementById('chartApp');
+  if (!document.fullscreenElement) {
+    el.requestFullscreen().catch(() => {});
+    document.getElementById('fsBtn').textContent = '✕ Exit';
+  } else {
+    document.exitFullscreen();
+    document.getElementById('fsBtn').textContent = '⛶';
+  }
+  setTimeout(resizeCharts, 200);
+}
+document.addEventListener('fullscreenchange', () => setTimeout(resizeCharts, 100));
+
+// ── Watchlist ──────────────────────────────────────────────────────────────
+let _watchlist = {{ watchlist | tojson }};
+
+function renderWatchlist() {
+  const el = document.getElementById('wlList');
+  el.innerHTML = '';
+  for (const sym of _watchlist) {
+    const p  = watchlistPrices[sym] || {};
+    const up = (p.chg_pct || 0) >= 0;
+    const row = document.createElement('div');
+    row.className = `wl-row flex items-center px-3 py-2 cursor-pointer transition-colors ${sym === currentSymbol ? 'active' : ''}`;
+    row.dataset.sym = sym;
+    row.style.borderBottom = '1px solid #1a1f2e';
+    row.innerHTML = `
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="text-xs">${sym.endsWith('.NS') ? '🇮🇳' : '🇺🇸'}</span>
+          <span class="text-white text-xs font-semibold truncate">${sym.replace('.NS','')}</span>
+        </div>
+        ${sym.endsWith('.NS') ? '<div class="text-slate-600 text-xs">NSE</div>' : '<div class="text-slate-600 text-xs">NYSE/NASDAQ</div>'}
+      </div>
+      <div class="w-20 text-right">
+        <div class="text-white text-xs font-mono">${p.last ? p.last.toLocaleString() : '—'}</div>
+      </div>
+      <div class="w-16 text-right">
+        <div class="text-xs font-mono font-bold" style="color:${up ? '#26a69a' : '#ef5350'}">
+          ${p.chg_pct != null ? (up ? '+' : '') + p.chg_pct.toFixed(2) + '%' : '—'}
+        </div>
+      </div>
+      <button class="wl-del ml-1 text-slate-700 hover:text-red-500 text-xs w-5 flex-shrink-0 text-center" data-sym="${sym}">✕</button>
+    `;
+    row.addEventListener('click', e => {
+      if (e.target.classList.contains('wl-del')) return;
+      loadChart(sym, currentInterval);
+    });
+    el.appendChild(row);
+  }
+
+  // Delete buttons
+  el.querySelectorAll('.wl-del').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const sym = btn.dataset.sym;
+      await fetch('/api/chart/watchlist/remove', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ symbol: sym }),
+      });
+      _watchlist = _watchlist.filter(s => s !== sym);
+      delete watchlistPrices[sym];
+      renderWatchlist();
+    });
+  });
+}
+
+async function wlAdd() {
+  const inp = document.getElementById('wlAddInput');
+  const sym = inp.value.toUpperCase().trim();
+  if (!sym) return;
+  inp.value = '';
+  const res = await fetch('/api/chart/watchlist/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ symbol: sym }),
+  });
+  const data = await res.json();
+  _watchlist = data.watchlist || _watchlist;
+  renderWatchlist();
+  loadPrices();
+}
+
+document.getElementById('wlAddInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') wlAdd();
+});
+
+async function loadPrices() {
+  try {
+    const res  = await fetch('/api/chart/prices');
+    const list = await res.json();
+    for (const row of list) watchlistPrices[row.symbol] = row;
+    renderWatchlist();
+    document.getElementById('wlLastUpdate').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    console.warn('[WL] price fetch error', e);
+  }
+}
+
+// ── Symbol input handling ──────────────────────────────────────────────────
+function loadSymbolFromInput() {
+  const v = document.getElementById('symbolInput').value.trim().toUpperCase();
+  if (v) loadChart(v, currentInterval);
+}
+document.getElementById('symbolInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadSymbolFromInput();
+});
+
+// ── Timeframe buttons ──────────────────────────────────────────────────────
+document.querySelectorAll('.tf-btn').forEach(btn => {
+  btn.addEventListener('click', () => loadChart(currentSymbol, btn.dataset.tf));
+});
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function setLoading(on, msg) {
+  const el = document.getElementById('loadingOverlay');
+  el.classList.toggle('hidden', !on);
+  if (msg) document.getElementById('loadingMsg').textContent = msg;
+}
+
+let _bannerTimer;
+function showBanner(msg, color) {
+  clearTimeout(_bannerTimer);
+  const b = document.getElementById('bannerMsg') || (() => {
+    const d = document.createElement('div');
+    d.id = 'bannerMsg';
+    d.style.cssText = 'position:fixed;top:8rem;left:50%;transform:translateX(-50%);z-index:99;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;';
+    document.body.appendChild(d); return d;
+  })();
+  b.textContent  = msg;
+  b.style.background = color === 'red' ? '#c0392b' : '#27ae60';
+  b.style.color = '#fff';
+  b.style.display = 'block';
+  _bannerTimer = setTimeout(() => { b.style.display = 'none'; }, 4000);
+}
+
+function fmt2(v) {
+  return v != null ? (+v).toLocaleString(undefined, {maximumFractionDigits: 2}) : '—';
+}
+function fmtVol(v) {
+  if (!v) return '—';
+  if (v >= 1e9) return (v/1e9).toFixed(2) + 'B';
+  if (v >= 1e6) return (v/1e6).toFixed(2) + 'M';
+  if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
+  return v.toLocaleString();
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  initCharts();
+  renderWatchlist();
+  loadChart(currentSymbol, currentInterval);
+  loadPrices();
+
+  // Auto-refresh prices every 60s
+  setInterval(loadPrices, 60000);
+});
+</script>
+{% endblock %}
