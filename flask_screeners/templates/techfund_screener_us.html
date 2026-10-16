@@ -383,7 +383,7 @@ function pollProgress() {
       document.getElementById('failedCount').textContent = d.failed || 0;
       if (!d.running) {
         clearInterval(_pollInterval); _pollInterval = null;
-        if (d.pct >= 100) setTimeout(() => location.reload(), 1000);
+        if (d.pct >= 100) setTimeout(() => { window.location.href = window.location.pathname; }, 1000);
       }
     }).catch(() => {});
 }
