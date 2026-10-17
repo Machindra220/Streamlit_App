@@ -475,7 +475,7 @@ DEFAULT_FILTERS = {
     "min_rev_growth":    10.0,
     "max_52w_high_dist": 25.0,
     "require_minervini": True,
-    "max_tickers":       100,
+    "max_tickers":       500,
 }
 
 PALETTE = [
