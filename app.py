@@ -302,7 +302,7 @@ if universe_choice == "Custom Tickers":
 
 max_tickers = st.sidebar.slider(
     "Max Tickers to Scan",
-    min_value=10, max_value=500, value=100, step=10,
+    min_value=10, max_value=500, value=500, step=10,
     help="Reduce for speed. 500 = full universe (may take several minutes).",
 )
 
