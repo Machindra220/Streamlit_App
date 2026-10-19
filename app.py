@@ -456,11 +456,14 @@ if run_btn:
 
     # PASS table
     st.markdown("### ✅ Screened Results — PASS (sorted by RS Rating ↓)")
+    _pass_display = passed_df.reset_index(drop=True).copy()
+    _pass_display.insert(0, "📊", _pass_display["Ticker"].apply(lambda s: f"/Chart?symbol={s}"))
     st.dataframe(
-        passed_df.reset_index(drop=True),
+        _pass_display,
         use_container_width=True,
         height=440,
         column_config={
+            "📊":          st.column_config.LinkColumn("📊", display_text="📊 Chart", help="Open chart in new tab"),
             "Price":       st.column_config.NumberColumn(format="%.2f"),
             "Day Chg%":    st.column_config.NumberColumn(format="%.2f %%"),
             "RS Rating":   st.column_config.NumberColumn(format="%d"),
@@ -479,9 +482,14 @@ if run_btn:
             index=sort_options.index("RS Rating") if "RS Rating" in sort_options else 0,
         )
         sort_asc = st.checkbox("Ascending", value=False)
+        _all_display = df.sort_values(sort_col, ascending=sort_asc, na_position="last").reset_index(drop=True).copy()
+        _all_display.insert(0, "📊", _all_display["Ticker"].apply(lambda s: f"/Chart?symbol={s}"))
         st.dataframe(
-            df.sort_values(sort_col, ascending=sort_asc, na_position="last").reset_index(drop=True),
+            _all_display,
             use_container_width=True,
+            column_config={
+                "📊": st.column_config.LinkColumn("📊", display_text="📊 Chart", help="Open chart in new tab"),
+            },
         )
 
     # Export
