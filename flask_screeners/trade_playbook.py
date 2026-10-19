@@ -63,6 +63,11 @@ def playbook_view():
     return render_template("trade_playbook.html")
 
 
+@playbook_bp.route("/playbook-card")
+def playbook_card():
+    return render_template("trade_playbook_card.html")
+
+
 # ── API: Trades ───────────────────────────────────────────────────────────────
 @playbook_bp.route("/api/playbook/trades", methods=["GET"])
 def get_trades():

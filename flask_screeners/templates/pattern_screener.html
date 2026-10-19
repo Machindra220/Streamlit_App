@@ -1,0 +1,469 @@
+{% extends "base_authenticated.html" %}
+{% block title %}EMA Squeeze Screener{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-950 text-slate-200 p-4">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-start justify-between gap-3 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white">🔍 EMA Squeeze Breakout Screener</h1>
+      <p class="text-slate-400 text-sm mt-1">
+        Finds stocks where EMA 10/20/50 compressed tightly, then price broke out above the cluster.
+      </p>
+    </div>
+    <div id="ts-badge" class="text-xs text-blue-400 pt-1 font-mono"></div>
+  </div>
+
+  <!-- Pattern explainer (collapsible) -->
+  <details class="bg-slate-900 border border-slate-700/50 rounded-xl mb-5 group">
+    <summary class="px-5 py-3 cursor-pointer text-sm font-medium text-slate-300 flex items-center justify-between select-none">
+      <span>📖 How the Pattern Works</span>
+      <span class="text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+    </summary>
+    <div class="px-5 pb-4 pt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-300">
+      <div class="bg-slate-800 rounded-lg p-3">
+        <p class="font-semibold text-blue-400 mb-1">1 · Uptrend Base</p>
+        <p>Price above EMA200. EMA50 above EMA200. Stock in a healthy uptrend.</p>
+      </div>
+      <div class="bg-slate-800 rounded-lg p-3">
+        <p class="font-semibold text-yellow-400 mb-1">2 · EMA Compression</p>
+        <p>EMA 10, 20 &amp; 50 converge — spread drops below your threshold % of EMA50.</p>
+      </div>
+      <div class="bg-slate-800 rounded-lg p-3">
+        <p class="font-semibold text-emerald-400 mb-1">3 · Breakout</p>
+        <p>Price crosses above all three EMAs. Volume expands. Spread starts widening.</p>
+      </div>
+      <div class="bg-slate-800 rounded-lg p-3">
+        <p class="font-semibold text-purple-400 mb-1">4 · Still Buyable</p>
+        <p>Price within your max extension % of EMA50. Not over-extended or late.</p>
+      </div>
+    </div>
+  </details>
+
+  <!-- Main layout -->
+  <div class="flex flex-col lg:flex-row gap-5">
+
+    <!-- ── Sidebar controls ───────────────────────── -->
+    <div class="lg:w-64 flex-shrink-0 space-y-4">
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Universe</p>
+
+        <div class="space-y-2 text-sm">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="universe" value="sp500" checked class="accent-blue-500"> US S&P 500
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="universe" value="nifty500" class="accent-emerald-500"> NSE Nifty 500
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="universe" value="custom" class="accent-purple-500"> Custom Tickers
+          </label>
+        </div>
+
+        <div id="custom-wrap" class="hidden mt-3">
+          <textarea id="custom-tickers" rows="3" placeholder="AAPL, MSFT, RELIANCE.NS"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white resize-none outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+        </div>
+
+        <div class="mt-4">
+          <label class="block text-xs text-slate-400 mb-1">Max Tickers <span id="max-val" class="text-white font-mono">200</span></label>
+          <input type="range" id="max-tickers" min="10" max="500" value="200" step="10"
+            class="w-full accent-blue-500">
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4 space-y-4">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Pattern Parameters</p>
+
+        <div>
+          <label class="flex justify-between text-xs text-slate-400 mb-1">
+            <span>Max EMA Spread %</span><span id="comp-val" class="text-white font-mono">2.5%</span>
+          </label>
+          <input type="range" id="comp-pct" min="0.5" max="6" value="2.5" step="0.25"
+            class="w-full accent-emerald-500">
+          <p class="text-xs text-slate-500 mt-1">Tighter = rarer but higher quality</p>
+        </div>
+
+        <div>
+          <label class="flex justify-between text-xs text-slate-400 mb-1">
+            <span>Squeeze Lookback</span><span id="lookback-val" class="text-white font-mono">40 bars</span>
+          </label>
+          <input type="range" id="lookback" min="15" max="60" value="40" step="5"
+            class="w-full accent-yellow-500">
+        </div>
+
+        <div>
+          <label class="flex justify-between text-xs text-slate-400 mb-1">
+            <span>Max Bars Since Squeeze</span><span id="bars-val" class="text-white font-mono">20</span>
+          </label>
+          <input type="range" id="max-bars" min="5" max="30" value="20" step="5"
+            class="w-full accent-purple-500">
+        </div>
+
+        <div>
+          <label class="flex justify-between text-xs text-slate-400 mb-1">
+            <span>Max Extension from EMA50</span><span id="ext-val" class="text-white font-mono">20%</span>
+          </label>
+          <input type="range" id="max-ext" min="5" max="40" value="20" step="5"
+            class="w-full accent-red-500">
+        </div>
+      </div>
+
+      <button id="scan-btn" onclick="startScan()"
+        class="w-full bg-purple-700 hover:bg-purple-600 text-white font-bold py-3 rounded-xl transition-colors text-sm">
+        🚀 Scan for Pattern
+      </button>
+
+      <a href="/playbook-card" target="_blank"
+        class="block text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-lg transition-colors">
+        📒 Open Trade Playbook Card
+      </a>
+    </div>
+
+    <!-- ── Main results area ──────────────────────── -->
+    <div class="flex-1 min-w-0 space-y-4">
+
+      <!-- Progress bar -->
+      <div id="progress-section" class="hidden bg-slate-900 border border-slate-700/50 rounded-xl p-4">
+        <div class="flex justify-between text-sm mb-2">
+          <span id="progress-msg" class="text-purple-300">Starting…</span>
+          <span id="progress-pct" class="text-white font-mono font-bold">0%</span>
+        </div>
+        <div class="w-full bg-slate-700 rounded-full h-2">
+          <div id="progress-bar" class="bg-purple-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+        </div>
+      </div>
+
+      <!-- Summary metrics -->
+      <div id="metrics-row" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4 text-center">
+          <p class="text-xs text-slate-400 mb-1">Scanned</p>
+          <p id="m-total" class="text-2xl font-bold text-white font-mono">—</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4 text-center">
+          <p class="text-xs text-slate-400 mb-1">Matched</p>
+          <p id="m-passed" class="text-2xl font-bold text-emerald-400 font-mono">—</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4 text-center">
+          <p class="text-xs text-slate-400 mb-1">Best Score</p>
+          <p id="m-best" class="text-2xl font-bold text-yellow-400 font-mono">—</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-4 text-center">
+          <p class="text-xs text-slate-400 mb-1">Avg Vol Ratio</p>
+          <p id="m-volratio" class="text-2xl font-bold text-blue-400 font-mono">—</p>
+        </div>
+      </div>
+
+      <!-- Results table -->
+      <div id="results-section" class="hidden bg-slate-900 border border-slate-700/50 rounded-xl">
+        <div class="flex flex-wrap items-center justify-between px-5 py-3 border-b border-slate-700/50 gap-2">
+          <p class="text-sm font-semibold text-white">✅ EMA Squeeze Breakout Matches <span id="result-count" class="text-slate-400 font-normal text-xs"></span></p>
+          <div class="flex gap-2">
+            <input id="filter-input" type="text" placeholder="Filter symbol…"
+              class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1 text-xs text-white outline-none focus:ring-2 focus:ring-purple-500 w-32">
+            <a id="export-btn" href="/api/pattern/export"
+              class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-3 py-1.5 rounded-lg transition-colors">
+              ⬇ CSV
+            </a>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs" id="results-table">
+            <thead>
+              <tr class="text-left text-slate-400 border-b border-slate-800">
+                <th class="px-4 py-2 cursor-pointer hover:text-white" onclick="sortBy('ticker')">Symbol ⇅</th>
+                <th class="px-4 py-2">Name</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('price')">Price ⇅</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('day_chg')">Day% ⇅</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('score')">Score ⇅</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('squeeze_pct')">Squeeze% ⇅</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('bars_since_sqz')">Bars ⇅</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('ext_50ema')">Ext% ⇅</th>
+                <th class="px-4 py-2 text-right cursor-pointer hover:text-white" onclick="sortBy('vol_ratio')">Vol× ⇅</th>
+                <th class="px-4 py-2 text-center">Chart</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <p class="px-5 py-2 text-xs text-slate-500 border-t border-slate-800">
+          <strong>Score</strong> = squeeze tightness + recency + volume expansion ·
+          <strong>Squeeze%</strong> = tightest EMA10/20/50 spread found ·
+          <strong>Vol×</strong> = recent 5-bar avg ÷ 50-bar avg
+        </p>
+      </div>
+
+      <!-- Scan History -->
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl">
+        <div class="px-5 py-3 border-b border-slate-700/50">
+          <p class="text-sm font-semibold text-white">🕐 Last 5 Scans</p>
+        </div>
+        <div id="history-list" class="divide-y divide-slate-800">
+          <p class="px-5 py-4 text-sm text-slate-500">Loading history…</p>
+        </div>
+      </div>
+
+    </div><!-- /main col -->
+  </div><!-- /flex -->
+
+  <!-- History detail modal -->
+  <div id="hist-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-700">
+        <p id="hist-modal-title" class="text-sm font-semibold text-white"></p>
+        <button onclick="document.getElementById('hist-modal').classList.add('hidden')"
+          class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+      </div>
+      <div class="overflow-auto flex-1">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-left text-slate-400 border-b border-slate-800">
+              <th class="px-4 py-2">Symbol</th>
+              <th class="px-4 py-2">Name</th>
+              <th class="px-4 py-2 text-right">Price</th>
+              <th class="px-4 py-2 text-right">Score</th>
+              <th class="px-4 py-2 text-right">Squeeze%</th>
+              <th class="px-4 py-2 text-right">Bars</th>
+              <th class="px-4 py-2 text-right">Vol×</th>
+              <th class="px-4 py-2 text-center">Chart</th>
+            </tr>
+          </thead>
+          <tbody id="hist-modal-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<style>
+  details summary::-webkit-details-marker { display: none; }
+  details summary { list-style: none; }
+</style>
+
+<script>
+// ── Timestamp ────────────────────────────────────────────────────────────────
+document.getElementById('ts-badge').textContent =
+  '🕐 ' + new Date().toLocaleString('en-IN', { hour12: false });
+
+// ── Range inputs live labels ─────────────────────────────────────────────────
+document.getElementById('max-tickers').addEventListener('input', function() {
+  document.getElementById('max-val').textContent = this.value;
+});
+document.getElementById('comp-pct').addEventListener('input', function() {
+  document.getElementById('comp-val').textContent = this.value + '%';
+});
+document.getElementById('lookback').addEventListener('input', function() {
+  document.getElementById('lookback-val').textContent = this.value + ' bars';
+});
+document.getElementById('max-bars').addEventListener('input', function() {
+  document.getElementById('bars-val').textContent = this.value;
+});
+document.getElementById('max-ext').addEventListener('input', function() {
+  document.getElementById('ext-val').textContent = this.value + '%';
+});
+
+// ── Custom ticker toggle ─────────────────────────────────────────────────────
+document.querySelectorAll('input[name="universe"]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('custom-wrap').classList.toggle(
+      'hidden', r.value !== 'custom' || !r.checked
+    );
+  });
+});
+
+// ── Sort state ───────────────────────────────────────────────────────────────
+let allResults = [];
+let sortKey    = 'score';
+let sortAsc    = false;
+
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = false; }
+  renderTable(allResults);
+}
+
+// ── Scan ─────────────────────────────────────────────────────────────────────
+let pollTimer = null;
+
+async function startScan() {
+  const universe = document.querySelector('input[name="universe"]:checked').value;
+  const body = {
+    universe,
+    max_tickers:    +document.getElementById('max-tickers').value,
+    comp_pct:       +document.getElementById('comp-pct').value,
+    lookback:       +document.getElementById('lookback').value,
+    max_bars_since: +document.getElementById('max-bars').value,
+    max_ext_pct:    +document.getElementById('max-ext').value,
+    custom_tickers: document.getElementById('custom-tickers').value,
+  };
+
+  document.getElementById('scan-btn').disabled = true;
+  document.getElementById('scan-btn').textContent = '⏳ Scanning…';
+  document.getElementById('progress-section').classList.remove('hidden');
+  document.getElementById('results-section').classList.add('hidden');
+  document.getElementById('metrics-row').classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/pattern/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      alert(d.error || 'Failed to start scan');
+      resetBtn(); return;
+    }
+  } catch(e) {
+    alert('Network error: ' + e); resetBtn(); return;
+  }
+
+  pollTimer = setInterval(pollProgress, 1200);
+}
+
+async function pollProgress() {
+  try {
+    const d = await (await fetch('/api/pattern/progress')).json();
+    document.getElementById('progress-msg').textContent = d.msg;
+    document.getElementById('progress-pct').textContent = d.pct + '%';
+    document.getElementById('progress-bar').style.width  = d.pct + '%';
+
+    if (!d.running && d.pct >= 100) {
+      clearInterval(pollTimer);
+      await loadResults();
+      loadHistory();
+      resetBtn();
+    }
+  } catch(e) {}
+}
+
+async function loadResults() {
+  const rows = await (await fetch('/api/pattern/results')).json();
+  allResults = rows;
+
+  const ms = document.getElementById('metrics-row');
+  ms.classList.remove('hidden');
+  document.getElementById('m-total').textContent   = document.getElementById('max-tickers').value;
+  document.getElementById('m-passed').textContent  = rows.length;
+  document.getElementById('m-best').textContent    = rows.length ? rows[0].score.toFixed(1) : '0';
+  const avgVol = rows.length ? (rows.reduce((s,r) => s + r.vol_ratio, 0) / rows.length).toFixed(2) : '—';
+  document.getElementById('m-volratio').textContent = avgVol;
+
+  document.getElementById('result-count').textContent = `(${rows.length} results)`;
+  document.getElementById('results-section').classList.remove('hidden');
+  renderTable(rows);
+  document.getElementById('progress-section').classList.add('hidden');
+}
+
+function renderTable(rows) {
+  // Apply filter
+  const q = document.getElementById('filter-input').value.toLowerCase();
+  let data = q ? rows.filter(r => r.ticker.toLowerCase().includes(q) || (r.name||'').toLowerCase().includes(q)) : rows;
+
+  // Sort
+  data = [...data].sort((a, b) => {
+    const av = a[sortKey] ?? 0, bv = b[sortKey] ?? 0;
+    if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortAsc ? av - bv : bv - av;
+  });
+
+  const isIndia = document.querySelector('input[name="universe"]:checked').value === 'nifty500';
+  const cur = isIndia ? '₹' : '$';
+
+  const tbody = document.getElementById('results-body');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="px-4 py-6 text-center text-slate-500">No matches found. Try relaxing parameters.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(r => {
+    const chgCls = r.day_chg >= 0 ? 'text-emerald-400' : 'text-red-400';
+    const scoreClr = r.score >= 50 ? 'text-emerald-400' : r.score >= 30 ? 'text-yellow-400' : 'text-slate-300';
+    return `<tr class="border-b border-slate-800/40 hover:bg-slate-800/30 transition-colors">
+      <td class="px-4 py-2.5 font-semibold text-white">${r.ticker}</td>
+      <td class="px-4 py-2.5 text-slate-400 max-w-[140px] truncate">${r.name || '—'}</td>
+      <td class="px-4 py-2.5 text-right font-mono">${cur}${r.price.toFixed(2)}</td>
+      <td class="px-4 py-2.5 text-right font-mono ${chgCls}">${r.day_chg >= 0 ? '+' : ''}${r.day_chg.toFixed(2)}%</td>
+      <td class="px-4 py-2.5 text-right font-mono font-bold ${scoreClr}">${r.score.toFixed(1)}</td>
+      <td class="px-4 py-2.5 text-right font-mono text-yellow-400">${r.squeeze_pct.toFixed(2)}%</td>
+      <td class="px-4 py-2.5 text-right font-mono">${r.bars_since_sqz}</td>
+      <td class="px-4 py-2.5 text-right font-mono">${r.ext_50ema.toFixed(1)}%</td>
+      <td class="px-4 py-2.5 text-right font-mono text-blue-400">${r.vol_ratio.toFixed(2)}×</td>
+      <td class="px-4 py-2.5 text-center">
+        <a href="/chart?symbol=${encodeURIComponent(r.ticker)}" target="_blank"
+          class="text-purple-400 hover:text-purple-300 transition-colors">📊</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('filter-input').addEventListener('input', () => renderTable(allResults));
+
+function resetBtn() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = false;
+  btn.textContent = '🚀 Scan for Pattern';
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const rows = await (await fetch('/api/pattern/history')).json();
+  const el   = document.getElementById('history-list');
+  if (!rows.length) {
+    el.innerHTML = '<p class="px-5 py-4 text-sm text-slate-500">No scans yet — run a scan above.</p>';
+    return;
+  }
+  el.innerHTML = rows.map(r => `
+    <div class="px-5 py-3 hover:bg-slate-800/30 transition-colors">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span class="text-sm font-medium text-white">${r.universe}</span>
+          <span class="ml-2 text-xs text-slate-400">${r.timestamp}</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-emerald-400 font-mono">${r.passed} matches</span>
+          <span class="text-xs text-slate-500">/ ${r.total} scanned</span>
+          <button onclick="openHistModal(${r.id}, '${r.timestamp} · ${r.universe}')"
+            class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-1 rounded transition-colors">
+            View
+          </button>
+        </div>
+      </div>
+      ${r.params ? `<p class="text-xs text-slate-500 mt-0.5">${r.params}</p>` : ''}
+    </div>
+  `).join('');
+}
+
+async function openHistModal(id, title) {
+  document.getElementById('hist-modal-title').textContent = title;
+  document.getElementById('hist-modal-body').innerHTML =
+    '<tr><td colspan="8" class="px-4 py-4 text-center text-slate-500">Loading…</td></tr>';
+  document.getElementById('hist-modal').classList.remove('hidden');
+
+  const rows = await (await fetch('/api/pattern/history/' + id)).json();
+  const tbody = document.getElementById('hist-modal-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-slate-500">No matches in this scan.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `<tr class="border-b border-slate-800 hover:bg-slate-800/30">
+    <td class="px-4 py-2 font-semibold text-white">${r.ticker}</td>
+    <td class="px-4 py-2 text-slate-400 max-w-[140px] truncate">${r.name || '—'}</td>
+    <td class="px-4 py-2 text-right font-mono">${r.price?.toFixed(2) ?? '—'}</td>
+    <td class="px-4 py-2 text-right font-mono text-yellow-400">${r.score?.toFixed(1) ?? '—'}</td>
+    <td class="px-4 py-2 text-right font-mono">${r.squeeze_pct?.toFixed(2) ?? '—'}%</td>
+    <td class="px-4 py-2 text-right font-mono">${r.bars_since_sqz ?? '—'}</td>
+    <td class="px-4 py-2 text-right font-mono text-blue-400">${r.vol_ratio?.toFixed(2) ?? '—'}×</td>
+    <td class="px-4 py-2 text-center">
+      <a href="/chart?symbol=${encodeURIComponent(r.ticker)}" target="_blank"
+        class="text-purple-400 hover:text-purple-300">📊</a>
+    </td>
+  </tr>`).join('');
+}
+
+// Load history on page load
+loadHistory();
+</script>
+{% endblock %}
