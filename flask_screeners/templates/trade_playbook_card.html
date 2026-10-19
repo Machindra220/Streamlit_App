@@ -1,0 +1,485 @@
+<title>Swing Trading Playbook</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap">
+
+<style>
+  /* ── Tokens ─────────────────────────────────────────── */
+  :root {
+    --bg:       #0D1117;
+    --surface:  #161B22;
+    --border:   #21262D;
+    --fg:       #E6EDF3;
+    --muted:    #8B949E;
+    --gold:     #D97706;
+    --gold-lt:  #FCD34D;
+    --green:    #10B981;
+    --red:      #EF4444;
+    --blue:     #3B82F6;
+    --purple:   #8B5CF6;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:      #F0F2F5;
+      --surface: #FFFFFF;
+      --border:  #D1D5DB;
+      --fg:      #111827;
+      --muted:   #6B7280;
+      --gold:    #B45309;
+      --gold-lt: #92400E;
+      --green:   #059669;
+      --red:     #DC2626;
+      --blue:    #2563EB;
+      --purple:  #7C3AED;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:      #F0F2F5;
+    --surface: #FFFFFF;
+    --border:  #D1D5DB;
+    --fg:      #111827;
+    --muted:   #6B7280;
+    --gold:    #B45309;
+    --gold-lt: #92400E;
+    --green:   #059669;
+    --red:     #DC2626;
+    --blue:    #2563EB;
+    --purple:  #7C3AED;
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    padding-block: 24px;
+    padding-left:  max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  /* ── Page header ─────────────────────────────────── */
+  .page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--gold);
+    padding-bottom: 12px;
+  }
+  .page-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(28px, 6vw, 44px);
+    letter-spacing: 0.06em;
+    color: var(--gold-lt);
+    line-height: 1;
+  }
+  .page-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    padding-bottom: 2px;
+  }
+
+  /* ── Grid ────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 700px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  @media (min-width: 701px) and (max-width: 960px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .span2 { grid-column: span 2; }
+  @media (max-width: 700px) { .span2 { grid-column: span 1; } }
+
+  /* ── Card ────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .card-title .icon {
+    font-size: 16px;
+    line-height: 1;
+  }
+  .stripe-gold   { border-top: 3px solid var(--gold); }
+  .stripe-green  { border-top: 3px solid var(--green); }
+  .stripe-red    { border-top: 3px solid var(--red); }
+  .stripe-blue   { border-top: 3px solid var(--blue); }
+  .stripe-purple { border-top: 3px solid var(--purple); }
+
+  /* ── Rule list ───────────────────────────────────── */
+  .rule-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .rule-list li {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 12px;
+    color: var(--fg);
+  }
+  .rule-list li .dot {
+    flex-shrink: 0;
+    margin-top: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .dot-green  { background: var(--green); }
+  .dot-red    { background: var(--red); }
+  .dot-gold   { background: var(--gold); }
+  .dot-blue   { background: var(--blue); }
+  .dot-purple { background: var(--purple); }
+
+  strong { font-weight: 600; color: var(--fg); }
+  .muted { color: var(--muted); font-size: 11px; }
+
+  /* ── Formula block ───────────────────────────────── */
+  .formula {
+    background: var(--bg);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 6px 6px 0;
+    padding: 8px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 11.5px;
+    line-height: 1.8;
+    color: var(--gold-lt);
+  }
+  .formula .comment { color: var(--muted); font-style: italic; }
+
+  /* ── R table ─────────────────────────────────────── */
+  .r-table { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .r-table th {
+    text-align: left;
+    padding: 4px 6px;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .r-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); }
+  .r-table tr:last-child td { border-bottom: none; }
+  .green-text  { color: var(--green); font-weight: 600; }
+  .red-text    { color: var(--red);   font-weight: 600; }
+  .muted-text  { color: var(--muted); }
+  .gold-text   { color: var(--gold-lt); font-weight: 600; }
+
+  /* ── Scale-out strip ─────────────────────────────── */
+  .scale-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .scale-item {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 11px;
+  }
+  .scale-item .pct {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+  }
+  .scale-item .label { color: var(--muted); font-size: 10px; margin-top: 2px; }
+  .scale-item .detail { color: var(--fg); font-size: 10px; margin-top: 3px; }
+
+  /* ── Market badge row ────────────────────────────── */
+  .market-row { display: flex; flex-direction: column; gap: 6px; }
+  .market-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11.5px;
+  }
+  .signal-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Golden rules ────────────────────────────────── */
+  .golden-list { list-style: none; display: flex; flex-direction: column; gap: 5px; counter-reset: rules; }
+  .golden-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 12px;
+    counter-increment: rules;
+  }
+  .golden-list li::before {
+    content: counter(rules);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--gold);
+    min-width: 16px;
+    text-align: right;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ── EMA pattern ─────────────────────────────────── */
+  .ema-steps { display: flex; flex-direction: column; gap: 5px; }
+  .ema-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  .step-num {
+    background: var(--blue);
+    color: #fff;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    letter-spacing: 0;
+  }
+
+  /* ── Footer ──────────────────────────────────────── */
+  .footer {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+</style>
+
+<!-- ══════════════ PAGE ══════════════ -->
+<div class="page-header">
+  <div>
+    <div class="page-title">Swing Trading Playbook</div>
+    <div class="muted" style="margin-top:4px;font-size:11px;letter-spacing:.05em;text-transform:uppercase">Daily reference · EMA squeeze breakout system</div>
+  </div>
+  <div class="page-sub">Risk first. Always.</div>
+</div>
+
+<div class="grid">
+
+  <!-- ①  Entry Checklist -->
+  <div class="card stripe-green">
+    <div class="card-title" style="color:var(--green)">
+      <span class="icon">📈</span> Entry Checklist
+    </div>
+    <ul class="rule-list">
+      <li><span class="dot dot-green"></span><span><strong>Uptrend:</strong> Price above EMA 10, 20, 50 &amp; 200. EMA50 above EMA200.</span></li>
+      <li><span class="dot dot-green"></span><span><strong>EMA Squeeze:</strong> EMA 10/20/50 spread &lt; 3% of EMA50 — compression confirmed.</span></li>
+      <li><span class="dot dot-green"></span><span><strong>Breakout candle:</strong> Price breaks above EMA cluster on above-average volume.</span></li>
+      <li><span class="dot dot-green"></span><span><strong>Not extended:</strong> Price within 8% of EMA50. No chasing.</span></li>
+      <li><span class="dot dot-green"></span><span><strong>R:R ≥ 2:1</strong> to T1 before entering. No exceptions.</span></li>
+      <li><span class="dot dot-green"></span><span><strong>Market healthy:</strong> Index (Nifty / S&amp;P) above its 50-day EMA.</span></li>
+      <li><span class="dot dot-green"></span><span><strong>Stop defined:</strong> Know exact loss in ₹/$ before placing the order.</span></li>
+    </ul>
+  </div>
+
+  <!-- ②  Never Enter When -->
+  <div class="card stripe-red">
+    <div class="card-title" style="color:var(--red)">
+      <span class="icon">🚫</span> Never Enter When
+    </div>
+    <ul class="rule-list">
+      <li><span class="dot dot-red"></span><span>Price is below EMA50 or EMA50 is sloping down.</span></li>
+      <li><span class="dot dot-red"></span><span>Broader market index is &gt; 5% below its 50-day EMA.</span></li>
+      <li><span class="dot dot-red"></span><span>Earnings within 5 trading days.</span></li>
+      <li><span class="dot dot-red"></span><span>Stock already ran 5%+ on breakout day (chasing).</span></li>
+      <li><span class="dot dot-red"></span><span>Risk on this trade exceeds 2% of portfolio.</span></li>
+      <li><span class="dot dot-red"></span><span>You already have 6 or more open positions.</span></li>
+      <li><span class="dot dot-red"></span><span>You are revenge-trading after a recent loss.</span></li>
+    </ul>
+  </div>
+
+  <!-- ③  EMA Squeeze Pattern -->
+  <div class="card stripe-blue">
+    <div class="card-title" style="color:var(--blue)">
+      <span class="icon">🔵</span> EMA Squeeze Pattern
+    </div>
+    <div class="ema-steps">
+      <div class="ema-step"><span class="step-num">1</span><span>Price in uptrend: above EMA50 &amp; EMA200. EMA50 &gt; EMA200.</span></div>
+      <div class="ema-step"><span class="step-num">2</span><span>EMA 10, 20, 50 converge tightly — spread &lt; 3% of EMA50.</span></div>
+      <div class="ema-step"><span class="step-num">3</span><span>Price coils in a tight range — volatility contracts.</span></div>
+      <div class="ema-step"><span class="step-num">4</span><span>Breakout candle closes above EMA cluster with volume expansion.</span></div>
+      <div class="ema-step"><span class="step-num">5</span><span>Enter on breakout bar close or next open — not late.</span></div>
+      <div class="ema-step"><span class="step-num">6</span><span>Stop below EMA20 or below breakout candle low — whichever is lower.</span></div>
+    </div>
+  </div>
+
+  <!-- ④  Position Sizing -->
+  <div class="card stripe-gold">
+    <div class="card-title" style="color:var(--gold-lt)">
+      <span class="icon">🧮</span> Position Sizing
+    </div>
+    <div class="formula">
+      Risk ₹/$ = Portfolio × Risk%<br>
+      Risk/share = Entry − Stop<br>
+      Shares = Risk ₹/$ ÷ Risk/share<br>
+      <span class="comment">─────────────────────────────</span><br>
+      ₹5,00,000 × 1% = <strong>₹5,000 risk</strong><br>
+      Entry ₹250 − Stop ₹235 = ₹15/share<br>
+      Shares = 5,000 ÷ 15 = <strong>333 shares</strong>
+    </div>
+    <ul class="rule-list">
+      <li><span class="dot dot-gold"></span><span>Never risk more than <strong>1–2% per trade</strong>.</span></li>
+      <li><span class="dot dot-gold"></span><span>Never add to a losing position. Cut it.</span></li>
+      <li><span class="dot dot-gold"></span><span>Add to winners only after original is in profit &gt; 3%.</span></li>
+    </ul>
+  </div>
+
+  <!-- ⑤  Scale Out Plan -->
+  <div class="card stripe-purple">
+    <div class="card-title" style="color:var(--purple)">
+      <span class="icon">⚙️</span> Scale-Out Plan
+    </div>
+    <div class="scale-strip">
+      <div class="scale-item">
+        <div class="pct" style="color:var(--gold-lt)">T1</div>
+        <div class="label">Target 1 · 2R</div>
+        <div class="detail">Sell <strong>33–50%</strong></div>
+        <div class="muted" style="margin-top:4px">Move stop to breakeven</div>
+      </div>
+      <div class="scale-item">
+        <div class="pct" style="color:var(--green)">T2</div>
+        <div class="label">Target 2 · 4R</div>
+        <div class="detail">Sell <strong>33%</strong> more</div>
+        <div class="muted" style="margin-top:4px">Trail stop below EMA10</div>
+      </div>
+      <div class="scale-item">
+        <div class="pct" style="color:var(--blue)">TT</div>
+        <div class="label">Trailing</div>
+        <div class="detail">Let <strong>17–33%</strong> run</div>
+        <div class="muted" style="margin-top:4px">Exit on EMA20 close break</div>
+      </div>
+    </div>
+    <ul class="rule-list" style="margin-top:2px">
+      <li><span class="dot dot-purple"></span><span>At T1 — stop moves to breakeven. The trade is now risk-free.</span></li>
+      <li><span class="dot dot-purple"></span><span>Final tranche: exit when price closes below EMA10 on daily.</span></li>
+    </ul>
+  </div>
+
+  <!-- ⑥  Exit Signals -->
+  <div class="card stripe-red">
+    <div class="card-title" style="color:var(--red)">
+      <span class="icon">🛑</span> Mandatory Exit Signals
+    </div>
+    <ul class="rule-list">
+      <li><span class="dot dot-red"></span><span><strong>Stop hit:</strong> Exit immediately. No hoping. No moving stops down.</span></li>
+      <li><span class="dot dot-red"></span><span><strong>EMA50 daily close break:</strong> Exit remaining position.</span></li>
+      <li><span class="dot dot-red"></span><span><strong>Earnings gap-down &gt; 5%:</strong> Exit at open price.</span></li>
+      <li><span class="dot dot-red"></span><span><strong>Market crash &gt; 3% in a day:</strong> Cut all positions 50%.</span></li>
+      <li><span class="dot dot-red"></span><span><strong>Thesis broken:</strong> The reason you bought no longer holds — exit now.</span></li>
+    </ul>
+  </div>
+
+  <!-- ⑦  R-Multiple Reference -->
+  <div class="card stripe-gold">
+    <div class="card-title" style="color:var(--gold-lt)">
+      <span class="icon">📏</span> R-Multiple Reference
+    </div>
+    <table class="r-table">
+      <thead>
+        <tr>
+          <th>R×</th>
+          <th>Meaning</th>
+          <th style="text-align:right">On ₹1k risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="red-text">−1R</td><td class="muted-text">Stop hit (full loss)</td><td style="text-align:right" class="red-text">−₹1,000</td></tr>
+        <tr><td class="muted-text">0R</td><td class="muted-text">Breakeven exit</td><td style="text-align:right" class="muted-text">₹0</td></tr>
+        <tr><td class="gold-text">+1R</td><td class="muted-text">1:1 trade</td><td style="text-align:right" class="gold-text">+₹1,000</td></tr>
+        <tr><td class="green-text">+2R</td><td class="muted-text">T1 hit ✓</td><td style="text-align:right" class="green-text">+₹2,000</td></tr>
+        <tr><td class="green-text">+3R</td><td class="muted-text">T2 hit ✓✓</td><td style="text-align:right" class="green-text">+₹3,000</td></tr>
+        <tr><td class="green-text">+5R+</td><td class="muted-text">Runner 🚀</td><td style="text-align:right" class="green-text">+₹5,000+</td></tr>
+      </tbody>
+    </table>
+    <div class="muted" style="font-size:10.5px;margin-top:2px">Breakeven win rate at 2:1 = 33% · at 3:1 = 25%</div>
+  </div>
+
+  <!-- ⑧  Market Conditions -->
+  <div class="card stripe-green">
+    <div class="card-title" style="color:var(--green)">
+      <span class="icon">📊</span> Market Conditions
+    </div>
+    <div class="market-row">
+      <div class="market-item">
+        <span class="signal-dot" style="background:var(--green)"></span>
+        <div>
+          <strong>Trending up</strong> — Index above rising EMA50<br>
+          <span class="muted">Full position sizes. Be aggressive on setups.</span>
+        </div>
+      </div>
+      <div class="market-item">
+        <span class="signal-dot" style="background:#F59E0B"></span>
+        <div>
+          <strong>Choppy</strong> — Index between EMA20–50<br>
+          <span class="muted">Reduce size 50%. Tighten stops. Be selective.</span>
+        </div>
+      </div>
+      <div class="market-item">
+        <span class="signal-dot" style="background:var(--red)"></span>
+        <div>
+          <strong>Downtrend</strong> — Index below falling EMA50<br>
+          <span class="muted">Cash is a position. No new longs. Sit out.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑨  Golden Rules (span 2) -->
+  <div class="card stripe-gold span2" style="grid-column:span 1">
+    <div class="card-title" style="color:var(--gold-lt)">
+      <span class="icon">🔑</span> The 7 Golden Rules
+    </div>
+    <ol class="golden-list">
+      <li>Never risk more than 1–2% of portfolio on any single trade.</li>
+      <li>Define your stop loss <em>before</em> entering — not after.</li>
+      <li>Cut losses fast. Let winners run to T1, T2, then trail.</li>
+      <li>Never move a stop against you. Only trail in your favour.</li>
+      <li>After 3 consecutive losses — stop trading, review your process.</li>
+      <li>Never average down into a losing position. Cut it instead.</li>
+      <li>Track every trade. No tracking equals no improvement.</li>
+    </ol>
+  </div>
+
+</div>
+
+<div class="footer">
+  Swing Trading Reference Card · EMA Squeeze Breakout System · For personal use only
+</div>
