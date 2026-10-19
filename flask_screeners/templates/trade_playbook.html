@@ -1,0 +1,730 @@
+{% extends "base_authenticated.html" %}
+{% block title %}Trade Playbook{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-950 text-slate-200 p-4">
+
+  <!-- Header -->
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">📒 Swing Trading Playbook</h1>
+    <p class="text-slate-400 text-sm mt-1">Position sizing · Entry/Exit rules · Trade tracker</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex flex-wrap gap-2 mb-6 border-b border-slate-700/50 pb-3">
+    {% for tab in [
+      ('calc',    '🧮 Position Sizing'),
+      ('entry',   '📈 Entry Rules'),
+      ('mgmt',    '⚙️ Trade Management'),
+      ('exit',    '📉 Exit Rules'),
+      ('tracker', '📊 Trade Tracker'),
+      ('ref',     '⚡ Quick Reference'),
+    ] %}
+    <button
+      onclick="showTab('{{ tab[0] }}')"
+      id="tab-{{ tab[0] }}"
+      class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-colors
+             text-slate-400 hover:text-white hover:bg-slate-800"
+    >{{ tab[1] }}</button>
+    {% endfor %}
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: Position Sizing Calculator           -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="pane-calc" class="tab-pane hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Inputs -->
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Calculate Position Size</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Portfolio Value</label>
+            <input id="c-portfolio" type="number" value="100000" step="1000"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Risk per Trade (%)</label>
+            <input id="c-risk-pct" type="number" value="1" step="0.1" min="0.1" max="5"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Entry Price</label>
+            <input id="c-entry" type="number" step="0.01" placeholder="e.g. 250.00"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Stop Loss Price</label>
+            <input id="c-stop" type="number" step="0.01" placeholder="e.g. 235.00"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Target 1 Price (optional)</label>
+            <input id="c-t1" type="number" step="0.01" placeholder="e.g. 280.00"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Target 2 Price (optional)</label>
+            <input id="c-t2" type="number" step="0.01" placeholder="e.g. 310.00"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+          </div>
+          <button onclick="calcPosition()"
+            class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg transition-colors">
+            Calculate
+          </button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Results</h2>
+        <div id="calc-results" class="space-y-3 text-sm">
+          <p class="text-slate-500">Fill in the inputs and click Calculate.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: Entry Rules                          -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="pane-entry" class="tab-pane hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-emerald-400 mb-4">✅ Entry Checklist</h2>
+        <ul class="space-y-3 text-sm text-slate-300">
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">1.</span><span><strong class="text-white">Market Structure:</strong> Price must be in a confirmed uptrend — higher highs and higher lows on the daily chart.</span></li>
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">2.</span><span><strong class="text-white">Above Key EMAs:</strong> Price must be above EMA 10, 20, and 50 at entry. EMA 50 must be above EMA 200.</span></li>
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">3.</span><span><strong class="text-white">EMA Compression:</strong> EMAs 10/20/50 must have recently converged (spread &lt; 3% of EMA50).</span></li>
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">4.</span><span><strong class="text-white">Breakout Candle:</strong> Entry on breakout candle above the EMA cluster — ideally with above-average volume.</span></li>
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">5.</span><span><strong class="text-white">Not Extended:</strong> Price must not be more than 8–10% above EMA50 at entry. Avoid chasing.</span></li>
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">6.</span><span><strong class="text-white">Risk Defined:</strong> Stop loss must be calculated BEFORE entry. Know exact risk ₹/$ amount.</span></li>
+          <li class="flex gap-3"><span class="text-emerald-400 font-bold mt-0.5">7.</span><span><strong class="text-white">R:R Minimum:</strong> Reward-to-risk must be at least 2:1 to T1 target before taking the trade.</span></li>
+        </ul>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-red-400 mb-4">🚫 Never Enter When</h2>
+        <ul class="space-y-3 text-sm text-slate-300">
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>Price is below EMA 50 or EMA 50 is sloping downward.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>The broader market index (Nifty / S&P 500) is in a downtrend — over 5% below its 50-day EMA.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>Major earnings announcement within 5 trading days.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>Stock is more than 10% extended above EMA50 (late entry).</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>You are chasing a stock that already ran 5%+ on a breakout day.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>Risk amount for the trade would exceed 2% of total portfolio.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold mt-0.5">✗</span><span>You already have 6+ open positions — wait for an exit before adding.</span></li>
+        </ul>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6 md:col-span-2">
+        <h2 class="text-lg font-semibold text-blue-400 mb-4">📍 Stop Loss Placement</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-300">
+          <div class="bg-slate-800 rounded-lg p-4">
+            <p class="font-semibold text-white mb-2">EMA Bounce Entry</p>
+            <p>Stop below the low of the breakout candle OR below EMA20 — whichever is lower. Typically 1.5–3% below entry.</p>
+          </div>
+          <div class="bg-slate-800 rounded-lg p-4">
+            <p class="font-semibold text-white mb-2">Base Breakout Entry</p>
+            <p>Stop below the base/consolidation low. Give 1–2% buffer below the prior swing low to avoid shakeouts.</p>
+          </div>
+          <div class="bg-slate-800 rounded-lg p-4">
+            <p class="font-semibold text-white mb-2">Trailing Stop</p>
+            <p>Once price reaches T1, trail stop to breakeven. Once above T1 by 5%, trail stop to below EMA10 on daily.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: Trade Management                     -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="pane-mgmt" class="tab-pane hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-yellow-400 mb-4">⚙️ Scaling Out — Partial Exits</h2>
+        <div class="space-y-4 text-sm text-slate-300">
+          <div class="bg-slate-800 rounded-lg p-4 border-l-4 border-yellow-500">
+            <p class="font-semibold text-white mb-1">At Target 1 (T1)</p>
+            <p>Sell 33–50% of position. Move stop to breakeven on remaining shares. Lock in profit, remove risk.</p>
+          </div>
+          <div class="bg-slate-800 rounded-lg p-4 border-l-4 border-emerald-500">
+            <p class="font-semibold text-white mb-1">At Target 2 (T2)</p>
+            <p>Sell another 33% of original position. Trail remaining stop to below EMA10 on daily chart.</p>
+          </div>
+          <div class="bg-slate-800 rounded-lg p-4 border-l-4 border-blue-500">
+            <p class="font-semibold text-white mb-1">Let Winners Run</p>
+            <p>Keep final 17–33% as a "free runner". Only exit if price closes below EMA20 on daily OR a major pattern breaks.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-purple-400 mb-4">➕ Adding to Winners</h2>
+        <div class="space-y-4 text-sm text-slate-300">
+          <p class="text-slate-400">Only add to a position when ALL conditions are met:</p>
+          <ul class="space-y-2">
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> Original position is profitable (above entry by &gt;3%).</li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> Stock forms a new tight base or EMA pullback setup.</li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> Market conditions remain healthy (index above EMA50).</li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> Total risk on position (including add) stays under 2% portfolio.</li>
+            <li class="flex gap-2"><span class="text-emerald-400">✓</span> Add size is 50% or less of original position size.</li>
+          </ul>
+          <div class="bg-red-900/30 border border-red-700/50 rounded-lg p-3 mt-4">
+            <p class="text-red-300 font-semibold">⚠️ Never Average Down</p>
+            <p class="text-slate-400 text-xs mt-1">Do NOT add to a losing position. If a trade goes against you, respect your stop and exit. Adding down increases risk and ties up capital in a broken thesis.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6 md:col-span-2">
+        <h2 class="text-lg font-semibold text-white mb-4">📋 Daily Trade Review Checklist</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-300">
+          <div>
+            <p class="font-semibold text-emerald-400 mb-2">Morning (Pre-Market)</p>
+            <ul class="space-y-1">
+              <li>☐ Check index futures (Nifty / S&P)</li>
+              <li>☐ Review any news on open positions</li>
+              <li>☐ Note key support/resistance levels</li>
+              <li>☐ Set alerts for stop levels</li>
+            </ul>
+          </div>
+          <div>
+            <p class="font-semibold text-yellow-400 mb-2">During Session</p>
+            <ul class="space-y-1">
+              <li>☐ Monitor if stop levels are threatened</li>
+              <li>☐ Watch volume on breakout setups</li>
+              <li>☐ Do NOT watch every tick</li>
+              <li>☐ Execute plan — no emotional changes</li>
+            </ul>
+          </div>
+          <div>
+            <p class="font-semibold text-blue-400 mb-2">End of Day</p>
+            <ul class="space-y-1">
+              <li>☐ Update trade tracker with current prices</li>
+              <li>☐ Adjust trailing stops if needed</li>
+              <li>☐ Scan for new setups for next session</li>
+              <li>☐ Review any trades closed today</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: Exit Rules                           -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="pane-exit" class="tab-pane hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-red-400 mb-4">🛑 Mandatory Exit Signals</h2>
+        <ul class="space-y-3 text-sm text-slate-300">
+          <li class="flex gap-3"><span class="text-red-400 font-bold">1.</span><span><strong class="text-white">Stop Hit:</strong> Price closes below your stop loss — exit IMMEDIATELY, no hesitation, no hoping.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold">2.</span><span><strong class="text-white">EMA 50 Break:</strong> Price closes below EMA50 on the daily chart after a sustained uptrend.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold">3.</span><span><strong class="text-white">Earnings Gap Down:</strong> Stock gaps down &gt;5% on earnings — exit at open or on first available price.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold">4.</span><span><strong class="text-white">Market Crash:</strong> Index drops &gt;3% in a day — reduce all positions by 50% immediately.</span></li>
+          <li class="flex gap-3"><span class="text-red-400 font-bold">5.</span><span><strong class="text-white">Thesis Broken:</strong> The reason you bought no longer holds — exit regardless of price level.</span></li>
+        </ul>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold text-emerald-400 mb-4">🎯 Target-Based Exits</h2>
+        <div class="space-y-3 text-sm text-slate-300">
+          <div class="flex items-start gap-3 bg-slate-800 rounded-lg p-3">
+            <span class="text-yellow-400 font-bold text-lg">T1</span>
+            <div>
+              <p class="font-semibold text-white">Target 1 — 2R</p>
+              <p>Sell 33–50% of shares. Typically 1.5–3× the initial risk distance above entry.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 bg-slate-800 rounded-lg p-3">
+            <span class="text-emerald-400 font-bold text-lg">T2</span>
+            <div>
+              <p class="font-semibold text-white">Target 2 — 4R</p>
+              <p>Sell another 33%. Typically 3–5× the initial risk distance. Trail remainder below EMA10.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 bg-slate-800 rounded-lg p-3">
+            <span class="text-blue-400 font-bold text-lg">TT</span>
+            <div>
+              <p class="font-semibold text-white">Trailing Target — Let run</p>
+              <p>Final tranche: exit when price closes below EMA10 or a 10% pullback from highs — whichever first.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6 md:col-span-2">
+        <h2 class="text-lg font-semibold text-white mb-4">🧠 Psychological Exit Rules</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-300">
+          <ul class="space-y-2">
+            <li class="flex gap-2"><span class="text-yellow-400">→</span> If you are considering "moving your stop down just a little" — don't. Exit instead.</li>
+            <li class="flex gap-2"><span class="text-yellow-400">→</span> A 1R loss is fine. A 3R loss from letting it run means you broke the rules.</li>
+            <li class="flex gap-2"><span class="text-yellow-400">→</span> Don't exit profitable trades because they "look extended". Let price tell you when.</li>
+          </ul>
+          <ul class="space-y-2">
+            <li class="flex gap-2"><span class="text-yellow-400">→</span> Taking a 0.5R early profit is almost always worse than staying to T1.</li>
+            <li class="flex gap-2"><span class="text-yellow-400">→</span> When in doubt, exit half — it removes the emotional pressure and keeps upside.</li>
+            <li class="flex gap-2"><span class="text-yellow-400">→</span> Write your exit plan BEFORE you enter the trade. Stick to it under all emotions.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: Trade Tracker                        -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="pane-tracker" class="tab-pane hidden">
+
+    <!-- Add Trade Form -->
+    <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6 mb-6">
+      <h2 class="text-lg font-semibold text-white mb-4">➕ Add New Trade</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Date</label>
+          <input id="t-date" type="date"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Symbol</label>
+          <input id="t-symbol" type="text" placeholder="AAPL / RELIANCE"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 uppercase">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Market</label>
+          <select id="t-market"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="US">US</option>
+            <option value="India">India</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Entry Price</label>
+          <input id="t-entry" type="number" step="0.01" placeholder="0.00"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Stop Loss</label>
+          <input id="t-stop" type="number" step="0.01" placeholder="0.00"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Target 1</label>
+          <input id="t-t1" type="number" step="0.01" placeholder="0.00"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Target 2</label>
+          <input id="t-t2" type="number" step="0.01" placeholder="0.00"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Qty / Shares</label>
+          <input id="t-qty" type="number" step="1" placeholder="10"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="col-span-2 md:col-span-4">
+          <label class="block text-xs text-slate-400 mb-1">Setup Notes</label>
+          <input id="t-notes" type="text" placeholder="EMA squeeze breakout, volume expansion…"
+            class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div class="mt-4 flex gap-3 items-center">
+        <button onclick="addTrade()"
+          class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 py-2 rounded-lg transition-colors text-sm">
+          Add Trade
+        </button>
+        <span id="add-msg" class="text-sm"></span>
+      </div>
+    </div>
+
+    <!-- Filter + Refresh -->
+    <div class="flex flex-wrap gap-3 mb-4 items-center">
+      <span class="text-sm text-slate-400">Show:</span>
+      <button onclick="loadTrades('ALL')"    id="f-ALL"    class="filter-btn active-filter px-3 py-1 rounded-lg text-xs font-medium">All</button>
+      <button onclick="loadTrades('OPEN')"   id="f-OPEN"   class="filter-btn px-3 py-1 rounded-lg text-xs font-medium">Open</button>
+      <button onclick="loadTrades('CLOSED')" id="f-CLOSED" class="filter-btn px-3 py-1 rounded-lg text-xs font-medium">Closed</button>
+      <button onclick="loadTrades(currentFilter, true)"
+        class="ml-auto bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1 rounded-lg text-xs transition-colors">
+        🔄 Refresh Prices
+      </button>
+    </div>
+
+    <!-- Trades Table -->
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs text-slate-400 border-b border-slate-700">
+            <th class="pb-2 pr-3">Date</th>
+            <th class="pb-2 pr-3">Symbol</th>
+            <th class="pb-2 pr-3 text-right">Entry</th>
+            <th class="pb-2 pr-3 text-right">Stop</th>
+            <th class="pb-2 pr-3 text-right">T1</th>
+            <th class="pb-2 pr-3 text-right">T2</th>
+            <th class="pb-2 pr-3 text-right">Qty</th>
+            <th class="pb-2 pr-3 text-right">Risk ₹/$</th>
+            <th class="pb-2 pr-3 text-right">Live Price</th>
+            <th class="pb-2 pr-3 text-right">Unreal P&L</th>
+            <th class="pb-2 pr-3 text-right">R×</th>
+            <th class="pb-2 pr-3">Status</th>
+            <th class="pb-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="13" class="py-6 text-center text-slate-500">Loading trades…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Close Trade Modal -->
+    <div id="close-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center">
+      <div class="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm mx-4">
+        <h3 class="text-white font-semibold mb-4">Close / Partial Exit Trade</h3>
+        <input type="hidden" id="close-id">
+        <div class="space-y-3 text-sm">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Exit Price</label>
+            <input id="close-price" type="number" step="0.01"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Status</label>
+            <select id="close-status"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="CLOSED">Closed (full)</option>
+              <option value="PARTIAL">Partial Exit</option>
+              <option value="STOPPED">Stopped Out</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Notes</label>
+            <input id="close-notes" type="text" placeholder="e.g. T1 hit, sold 50%"
+              class="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+        <div class="flex gap-3 mt-4">
+          <button onclick="submitClose()"
+            class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg transition-colors">Save</button>
+          <button onclick="document.getElementById('close-modal').classList.add('hidden')"
+            class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 rounded-lg transition-colors">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB: Quick Reference                      -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="pane-ref" class="tab-pane hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-base font-semibold text-emerald-400 mb-3">📐 Position Sizing Formula</h2>
+        <div class="bg-slate-800 rounded-lg p-4 font-mono text-sm text-emerald-300">
+          <p>Risk $ = Portfolio × Risk%</p>
+          <p class="mt-1">Risk per share = Entry − Stop</p>
+          <p class="mt-1">Shares = Risk $ ÷ Risk/share</p>
+          <p class="mt-3 text-slate-400 text-xs">Example: ₹5,00,000 × 1% = ₹5,000 risk</p>
+          <p class="text-slate-400 text-xs">Entry ₹250, Stop ₹235 → risk/share = ₹15</p>
+          <p class="text-slate-400 text-xs">Shares = 5000 ÷ 15 = <span class="text-white">333 shares</span></p>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-base font-semibold text-yellow-400 mb-3">📏 R-Multiple Reference</h2>
+        <table class="w-full text-xs text-slate-300">
+          <thead><tr class="text-slate-400 border-b border-slate-700"><th class="pb-1 text-left">R×</th><th class="pb-1 text-left">Meaning</th><th class="pb-1 text-right">On ₹1,000 risk</th></tr></thead>
+          <tbody class="space-y-1">
+            <tr class="border-b border-slate-800"><td class="py-1 text-red-400">-1R</td><td>Stop hit (full loss)</td><td class="text-right text-red-400">-₹1,000</td></tr>
+            <tr class="border-b border-slate-800"><td class="py-1 text-red-300">-0.5R</td><td>Partial stop / early cut</td><td class="text-right text-red-300">-₹500</td></tr>
+            <tr class="border-b border-slate-800"><td class="py-1 text-slate-300">0R</td><td>Breakeven exit</td><td class="text-right">₹0</td></tr>
+            <tr class="border-b border-slate-800"><td class="py-1 text-emerald-300">+1R</td><td>1:1 trade</td><td class="text-right text-emerald-300">+₹1,000</td></tr>
+            <tr class="border-b border-slate-800"><td class="py-1 text-emerald-400">+2R</td><td>T1 hit</td><td class="text-right text-emerald-400">+₹2,000</td></tr>
+            <tr><td class="py-1 text-green-400">+3R+</td><td>T2 / runner</td><td class="text-right text-green-400">+₹3,000+</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-base font-semibold text-blue-400 mb-3">🎯 EMA Squeeze Pattern</h2>
+        <ol class="space-y-2 text-sm text-slate-300">
+          <li><span class="text-blue-400 font-bold">1.</span> Price above EMA 50 &amp; 200. EMA50 &gt; EMA200.</li>
+          <li><span class="text-blue-400 font-bold">2.</span> EMA 10, 20, 50 converge — spread &lt;3% of EMA50.</li>
+          <li><span class="text-blue-400 font-bold">3.</span> Price coils in tight range (low volatility).</li>
+          <li><span class="text-blue-400 font-bold">4.</span> Breakout candle above EMA cluster on volume.</li>
+          <li><span class="text-blue-400 font-bold">5.</span> Entry on breakout bar close or next open.</li>
+          <li><span class="text-blue-400 font-bold">6.</span> Stop below EMA20 / below breakout low.</li>
+        </ol>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-base font-semibold text-white mb-3">🔑 Golden Rules</h2>
+        <ul class="space-y-2 text-sm text-slate-300">
+          <li class="flex gap-2"><span class="text-emerald-400">1.</span> Never risk more than 1–2% of portfolio on one trade.</li>
+          <li class="flex gap-2"><span class="text-emerald-400">2.</span> Always define your stop BEFORE entering.</li>
+          <li class="flex gap-2"><span class="text-emerald-400">3.</span> Let winners run; cut losers short and fast.</li>
+          <li class="flex gap-2"><span class="text-emerald-400">4.</span> 3 losses in a row → take a day off, review.</li>
+          <li class="flex gap-2"><span class="text-emerald-400">5.</span> Never move stops against you. Only trail in your favour.</li>
+          <li class="flex gap-2"><span class="text-emerald-400">6.</span> Track every trade — no tracking = no improvement.</li>
+        </ul>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-base font-semibold text-white mb-3">📊 Market Conditions</h2>
+        <div class="space-y-2 text-sm">
+          <div class="flex gap-2 items-start"><span class="w-3 h-3 mt-1 rounded-full bg-emerald-500 flex-shrink-0"></span><span class="text-slate-300"><strong class="text-white">Trending up:</strong> Index above rising EMA 50. Be aggressive — full position sizes.</span></div>
+          <div class="flex gap-2 items-start"><span class="w-3 h-3 mt-1 rounded-full bg-yellow-500 flex-shrink-0"></span><span class="text-slate-300"><strong class="text-white">Choppy:</strong> Index between EMA 20–50. Reduce size by 50%, tighter stops.</span></div>
+          <div class="flex gap-2 items-start"><span class="w-3 h-3 mt-1 rounded-full bg-red-500 flex-shrink-0"></span><span class="text-slate-300"><strong class="text-white">Downtrend:</strong> Index below falling EMA 50. Cash is a position. No new longs.</span></div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+        <h2 class="text-base font-semibold text-white mb-3">⚡ Quick Maths</h2>
+        <div class="space-y-2 text-sm font-mono text-slate-300">
+          <p>Risk% = (Entry − Stop) / Entry × 100</p>
+          <p class="text-slate-500">e.g. (250−235)/250 = <span class="text-white">6%</span></p>
+          <p class="mt-2">R:R = (Target − Entry) / (Entry − Stop)</p>
+          <p class="text-slate-500">e.g. (280−250)/(250−235) = <span class="text-white">2:1</span></p>
+          <p class="mt-2">Breakeven Win Rate = 1 / (1 + R:R)</p>
+          <p class="text-slate-500">2:1 trade needs <span class="text-white">33%</span> win rate to break even</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .tab-btn { cursor: pointer; }
+  .tab-btn.active { background: #1e3a5f; color: #93c5fd; border: 1px solid #1d4ed8; }
+  .tab-pane { animation: fadeIn 0.15s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .filter-btn { background: #1e293b; color: #94a3b8; border: 1px solid #334155; cursor: pointer; transition: all 0.15s; }
+  .filter-btn:hover { background: #334155; color: #e2e8f0; }
+  .filter-btn.active-filter { background: #1e40af; color: #93c5fd; border-color: #2563eb; }
+</style>
+
+<script>
+// ── Tab system ──────────────────────────────────────────────────────────────
+const TAB_IDS = ['calc','entry','mgmt','exit','tracker','ref'];
+function showTab(id) {
+  TAB_IDS.forEach(t => {
+    document.getElementById('pane-' + t).classList.add('hidden');
+    document.getElementById('tab-' + t).classList.remove('active');
+  });
+  document.getElementById('pane-' + id).classList.remove('hidden');
+  document.getElementById('tab-' + id).classList.add('active');
+  if (id === 'tracker') loadTrades(currentFilter);
+}
+showTab('calc');
+
+// Set today's date default
+document.getElementById('t-date').value = new Date().toISOString().slice(0,10);
+
+// ── Position sizing calculator ──────────────────────────────────────────────
+function calcPosition() {
+  const port  = parseFloat(document.getElementById('c-portfolio').value) || 0;
+  const riskP = parseFloat(document.getElementById('c-risk-pct').value)  || 1;
+  const entry = parseFloat(document.getElementById('c-entry').value)     || 0;
+  const stop  = parseFloat(document.getElementById('c-stop').value)      || 0;
+  const t1    = parseFloat(document.getElementById('c-t1').value)        || 0;
+  const t2    = parseFloat(document.getElementById('c-t2').value)        || 0;
+
+  const el = document.getElementById('calc-results');
+  if (!entry || !stop || entry <= stop) {
+    el.innerHTML = '<p class="text-red-400">⚠️ Entry price must be greater than stop price.</p>'; return;
+  }
+  const riskAmt   = port * riskP / 100;
+  const riskShare = entry - stop;
+  const shares    = Math.floor(riskAmt / riskShare);
+  const position  = shares * entry;
+  const riskPct   = riskShare / entry * 100;
+  const rr1 = t1 ? ((t1 - entry) / riskShare).toFixed(2) : null;
+  const rr2 = t2 ? ((t2 - entry) / riskShare).toFixed(2) : null;
+
+  const row = (label, val, col='text-white') =>
+    `<div class="flex justify-between border-b border-slate-800 py-2">
+       <span class="text-slate-400">${label}</span>
+       <span class="font-semibold ${col}">${val}</span>
+     </div>`;
+
+  el.innerHTML = `
+    ${row('Portfolio Value', port.toLocaleString())}
+    ${row('Risk per Trade', riskP + '% = ' + riskAmt.toFixed(2), 'text-yellow-400')}
+    ${row('Risk per Share', riskShare.toFixed(2) + ' (' + riskPct.toFixed(1) + '%)')}
+    ${row('Position Size (Shares)', shares.toString(), 'text-emerald-400')}
+    ${row('Total Capital Required', position.toFixed(2))}
+    ${row('% of Portfolio Used', (position/port*100).toFixed(1) + '%')}
+    ${t1 ? row('T1 R:R', rr1 + ':1', parseFloat(rr1) >= 2 ? 'text-emerald-400' : 'text-yellow-400') : ''}
+    ${t2 ? row('T2 R:R', rr2 + ':1', parseFloat(rr2) >= 3 ? 'text-emerald-400' : 'text-yellow-400') : ''}
+    ${t1 ? row('T1 Profit (all shares)', ((t1-entry)*shares).toFixed(2), 'text-emerald-400') : ''}
+    ${t2 ? row('T2 Profit (all shares)', ((t2-entry)*shares).toFixed(2), 'text-green-400') : ''}
+  `;
+}
+
+// ── Trade Tracker ───────────────────────────────────────────────────────────
+let currentFilter = 'ALL';
+const priceCache  = {};
+
+async function loadTrades(filter, refreshPrices = false) {
+  currentFilter = filter;
+  ['ALL','OPEN','CLOSED'].forEach(f => {
+    document.getElementById('f-'+f).classList.toggle('active-filter', f === filter);
+  });
+  const res  = await fetch('/api/playbook/trades?status=' + filter);
+  const rows = await res.json();
+  renderTrades(rows, refreshPrices);
+}
+
+async function renderTrades(rows, refreshPrices) {
+  const tbody = document.getElementById('trades-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="13" class="py-6 text-center text-slate-500">No trades found.</td></tr>';
+    return;
+  }
+
+  // Render rows immediately, then update prices
+  tbody.innerHTML = rows.map(r => tradeRow(r, null)).join('');
+
+  if (refreshPrices || currentFilter === 'OPEN') {
+    const syms = [...new Set(rows.filter(r => r.status === 'OPEN').map(r => r.symbol))];
+    await Promise.all(syms.map(s => fetchPrice(s)));
+    tbody.innerHTML = rows.map(r => tradeRow(r, priceCache[r.symbol])).join('');
+  }
+}
+
+async function fetchPrice(sym) {
+  if (priceCache[sym]) return;
+  try {
+    const r = await fetch('/api/playbook/price/' + encodeURIComponent(sym));
+    const d = await r.json();
+    if (d.price) priceCache[sym] = d;
+  } catch(e) {}
+}
+
+function tradeRow(r, price) {
+  const cur   = r.market === 'India' ? '₹' : '$';
+  const open  = r.status === 'OPEN';
+  const riskShare = r.entry_price - r.stop_price;
+
+  let priceTd = '<td class="pr-3 text-right text-slate-500">—</td>';
+  let pnlTd   = '<td class="pr-3 text-right text-slate-500">—</td>';
+  let rTd     = '<td class="pr-3 text-right text-slate-500">—</td>';
+  let badge   = '';
+
+  if (open && price) {
+    const lp   = price.price;
+    const pnl  = ((lp - r.entry_price) * r.qty).toFixed(2);
+    const rm   = ((lp - r.entry_price) / riskShare).toFixed(2);
+    const col  = pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+    const chgC = price.chgp >= 0 ? 'text-emerald-400' : 'text-red-400';
+    priceTd = `<td class="pr-3 text-right"><span class="font-semibold text-white">${cur}${lp}</span><br><span class="${chgC} text-xs">${price.chgp >= 0 ? '+' : ''}${price.chgp}%</span></td>`;
+    pnlTd   = `<td class="pr-3 text-right font-semibold ${col}">${pnl >= 0 ? '+' : ''}${cur}${pnl}</td>`;
+    rTd     = `<td class="pr-3 text-right font-semibold ${col}">${rm}R</td>`;
+    if (lp <= r.stop_price) badge = '<span class="ml-1 text-xs bg-red-900/50 text-red-400 px-1 rounded">🚨 AT STOP</span>';
+    else if (r.target1 && lp >= r.target1) badge = '<span class="ml-1 text-xs bg-emerald-900/50 text-emerald-400 px-1 rounded">🎯 T1 HIT</span>';
+    else if (pnl > 0) badge = '<span class="ml-1 text-xs bg-blue-900/50 text-blue-400 px-1 rounded">✅ Profit</span>';
+  }
+
+  const statusColor = { OPEN:'text-blue-400', CLOSED:'text-slate-400', PARTIAL:'text-yellow-400', STOPPED:'text-red-400' };
+  return `<tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+    <td class="py-2 pr-3 text-slate-400 text-xs">${r.date_open}</td>
+    <td class="pr-3 font-semibold text-white">${r.symbol}${badge}</td>
+    <td class="pr-3 text-right">${cur}${r.entry_price}</td>
+    <td class="pr-3 text-right text-red-400">${cur}${r.stop_price}</td>
+    <td class="pr-3 text-right text-yellow-400">${r.target1 ? cur+r.target1 : '—'}</td>
+    <td class="pr-3 text-right text-emerald-400">${r.target2 ? cur+r.target2 : '—'}</td>
+    <td class="pr-3 text-right">${r.qty}</td>
+    <td class="pr-3 text-right text-yellow-400">${cur}${r.risk_amount || 0}</td>
+    ${priceTd}
+    ${pnlTd}
+    ${rTd}
+    <td class="pr-3 text-xs font-medium ${statusColor[r.status] || 'text-slate-400'}">${r.status}</td>
+    <td>
+      <div class="flex gap-2">
+        ${open ? `<button onclick="openCloseModal(${r.id})"
+            class="text-xs bg-yellow-700/50 hover:bg-yellow-700 text-yellow-300 px-2 py-1 rounded transition-colors">Close</button>` : ''}
+        <button onclick="deleteTrade(${r.id})"
+          class="text-xs bg-red-900/50 hover:bg-red-800 text-red-300 px-2 py-1 rounded transition-colors">Del</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+async function addTrade() {
+  const sym = document.getElementById('t-symbol').value.trim();
+  const msg = document.getElementById('add-msg');
+  if (!sym) { msg.textContent = '⚠️ Symbol required'; msg.className = 'text-sm text-red-400'; return; }
+
+  const body = {
+    date_open:   document.getElementById('t-date').value,
+    symbol:      sym,
+    market:      document.getElementById('t-market').value,
+    entry_price: document.getElementById('t-entry').value,
+    stop_price:  document.getElementById('t-stop').value,
+    target1:     document.getElementById('t-t1').value || null,
+    target2:     document.getElementById('t-t2').value || null,
+    qty:         document.getElementById('t-qty').value,
+    setup_notes: document.getElementById('t-notes').value,
+  };
+
+  const res = await fetch('/api/playbook/trades', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: JSON.stringify(body),
+  });
+  const d = await res.json();
+  if (res.ok) {
+    msg.textContent = `✅ Trade added — Risk: ${d.risk_amount}`;
+    msg.className = 'text-sm text-emerald-400';
+    ['t-symbol','t-entry','t-stop','t-t1','t-t2','t-qty','t-notes'].forEach(id => document.getElementById(id).value = '');
+    loadTrades(currentFilter);
+  } else {
+    msg.textContent = '⚠️ ' + (d.error || 'Error adding trade');
+    msg.className = 'text-sm text-red-400';
+  }
+}
+
+function openCloseModal(id) {
+  document.getElementById('close-id').value    = id;
+  document.getElementById('close-price').value = '';
+  document.getElementById('close-notes').value = '';
+  document.getElementById('close-modal').classList.remove('hidden');
+}
+
+async function submitClose() {
+  const id    = document.getElementById('close-id').value;
+  const price = document.getElementById('close-price').value;
+  if (!price) { alert('Enter exit price'); return; }
+
+  await fetch('/api/playbook/trades/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: JSON.stringify({
+      exit_price: price,
+      status:     document.getElementById('close-status').value,
+      exit_notes: document.getElementById('close-notes').value,
+    }),
+  });
+  document.getElementById('close-modal').classList.add('hidden');
+  loadTrades(currentFilter);
+}
+
+async function deleteTrade(id) {
+  if (!confirm('Delete this trade?')) return;
+  await fetch('/api/playbook/trades/' + id, {
+    method: 'DELETE',
+    headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
+  });
+  loadTrades(currentFilter);
+}
+</script>
+{% endblock %}
